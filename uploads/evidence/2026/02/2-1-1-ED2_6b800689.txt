@@ -1,0 +1,62 @@
+═══════════════════════════════════════════════════════════════════
+FORMAL APPROVAL - ASSET MANAGEMENT POLICY
+═══════════════════════════════════════════════════════════════════
+
+Document ID: APR-AM-2025-001
+Classification: Confidential
+Department: Executive Management
+Date: 2025-01-18
+
+───────────────────────────────────────────────────────────────────
+REFERENCE
+───────────────────────────────────────────────────────────────────
+
+Policy Document: POL-AM-2025-001
+Version: v1.2
+Policy Issue Date: 2025-01-15
+
+───────────────────────────────────────────────────────────────────
+STATEMENT OF APPROVAL
+───────────────────────────────────────────────────────────────────
+
+I, the undersigned, hereby approve the Information & Technology 
+Asset Management Policy as outlined in POL-AM-2025-001. 
+
+This policy has been reviewed and meets the cybersecurity 
+requirements of the organization.
+
+The policy shall be effective immediately upon signature and 
+communicated to all relevant stakeholders.
+
+───────────────────────────────────────────────────────────────────
+FORMAL APPROVAL
+───────────────────────────────────────────────────────────────────
+
+Approved By: Mohammed Al-Zahrani
+Title: Chief Executive Officer
+Signature: [Digitally Signed]
+
+Date: 10 / 01 / 2025
+
+[ERROR: Approval date (10/01/2025) is BEFORE policy issue date 
+(15/01/2025) - This is impossible and indicates a documentation 
+error]
+
+Approval Method: Official Email
+Reference: CEO-APR-20250110
+
+───────────────────────────────────────────────────────────────────
+DISTRIBUTION
+───────────────────────────────────────────────────────────────────
+
+This approval has been communicated to:
+- All Department Heads
+- IT Operations Team
+- Cybersecurity Team
+- HR Department
+
+───────────────────────────────────────────────────────────────────
+Document Classification: Confidential
+TLP: White
+Page 1 of 1
+═══════════════════════════════════════════════════════════════════

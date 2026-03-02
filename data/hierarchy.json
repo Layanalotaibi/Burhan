@@ -1,0 +1,184 @@
+{
+  "domain": {
+    "domain_id": "D1",
+    "name": "Cybersecurity Defense"
+  },
+  "sub_domains": [
+    {
+      "sub_domain_id": "SD2-1",
+      "name": "Asset Management",
+      "domain_id": "D1",
+      "controls": [
+        {
+          "control_id": "2-1",
+          "name": "Asset Management",
+          "sub_domain_id": "SD2-1",
+          "sub_controls": [
+            {
+              "sub_control_id": "2-1-1",
+              "name": "Asset Management Requirements Definition",
+              "control_id": "2-1",
+              "expected_deliverables": [
+                {
+                  "deliverable_id": "2-1-1-ED1",
+                  "name": "Information asset management cybersecurity requirements (policy or standard) approved by the organization",
+                  "sub_control_id": "2-1-1"
+                },
+                {
+                  "deliverable_id": "2-1-1-ED2",
+                  "name": "Formal approval by the head of the organization or his/her deputy",
+                  "sub_control_id": "2-1-1"
+                }
+              ]
+            },
+            {
+              "sub_control_id": "2-1-2",
+              "name": "Asset Management Requirements Implementation",
+              "control_id": "2-1",
+              "expected_deliverables": [
+                {
+                  "deliverable_id": "2-1-2-ED1",
+                  "name": "Documents confirming implementation of cybersecurity requirements",
+                  "sub_control_id": "2-1-2"
+                },
+                {
+                  "deliverable_id": "2-1-2-ED2",
+                  "name": "Action plan to implement requirements",
+                  "sub_control_id": "2-1-2"
+                },
+                {
+                  "deliverable_id": "2-1-2-ED3",
+                  "name": "Documented and up-to-date record of all assets (Excel or CMDB)",
+                  "sub_control_id": "2-1-2"
+                },
+                {
+                  "deliverable_id": "2-1-2-ED4",
+                  "name": "Specific procedures for dealing with assets based on classification",
+                  "sub_control_id": "2-1-2"
+                }
+              ]
+            },
+            {
+              "sub_control_id": "2-1-3",
+              "name": "Acceptable Use Policy Definition",
+              "control_id": "2-1",
+              "expected_deliverables": [
+                {
+                  "deliverable_id": "2-1-3-ED1",
+                  "name": "Approved acceptable use policy",
+                  "sub_control_id": "2-1-3"
+                },
+                {
+                  "deliverable_id": "2-1-3-ED2",
+                  "name": "Evidence that policy is communicated to all employees and stakeholders",
+                  "sub_control_id": "2-1-3"
+                },
+                {
+                  "deliverable_id": "2-1-3-ED3",
+                  "name": "Formal approval by head of organization or deputy",
+                  "sub_control_id": "2-1-3"
+                }
+              ]
+            },
+            {
+              "sub_control_id": "2-1-4",
+              "name": "Acceptable Use Policy Implementation",
+              "control_id": "2-1",
+              "expected_deliverables": [
+                {
+                  "deliverable_id": "2-1-4-ED1",
+                  "name": "Action plan to implement acceptable use requirements",
+                  "sub_control_id": "2-1-4"
+                },
+                {
+                  "deliverable_id": "2-1-4-ED2",
+                  "name": "Evidence of communicating requirements through approved channels",
+                  "sub_control_id": "2-1-4"
+                },
+                {
+                  "deliverable_id": "2-1-4-ED3",
+                  "name": "Completed and approved form showing employee approval of policy",
+                  "sub_control_id": "2-1-4"
+                }
+              ]
+            },
+            {
+              "sub_control_id": "2-1-5",
+              "name": "Asset Classification and Labeling",
+              "control_id": "2-1",
+              "expected_deliverables": [
+                {
+                  "deliverable_id": "2-1-5-ED1",
+                  "name": "Cybersecurity policy covering asset management requirements",
+                  "sub_control_id": "2-1-5"
+                },
+                {
+                  "deliverable_id": "2-1-5-ED2",
+                  "name": "Formal approval by head of organization",
+                  "sub_control_id": "2-1-5"
+                },
+                {
+                  "deliverable_id": "2-1-5-ED3",
+                  "name": "Document outlining asset classification method and system",
+                  "sub_control_id": "2-1-5"
+                },
+                {
+                  "deliverable_id": "2-1-5-ED4",
+                  "name": "Action plan for classification and coding implementation",
+                  "sub_control_id": "2-1-5"
+                },
+                {
+                  "deliverable_id": "2-1-5-ED5",
+                  "name": "Up-to-date register with all assets and classification levels",
+                  "sub_control_id": "2-1-5"
+                },
+                {
+                  "deliverable_id": "2-1-5-ED6",
+                  "name": "Evidence of asset classification and labeling",
+                  "sub_control_id": "2-1-5"
+                }
+              ]
+            },
+            {
+              "sub_control_id": "2-1-6",
+              "name": "Periodic Review of Asset Management",
+              "control_id": "2-1",
+              "expected_deliverables": [
+                {
+                  "deliverable_id": "2-1-6-ED1",
+                  "name": "Results of requirements implementation review",
+                  "sub_control_id": "2-1-6"
+                },
+                {
+                  "deliverable_id": "2-1-6-ED2",
+                  "name": "Document defining review cycle (Compliance Assessment Schedule)",
+                  "sub_control_id": "2-1-6"
+                },
+                {
+                  "deliverable_id": "2-1-6-ED3",
+                  "name": "Log of updates and changes",
+                  "sub_control_id": "2-1-6"
+                },
+                {
+                  "deliverable_id": "2-1-6-ED4",
+                  "name": "Compliance assessment report",
+                  "sub_control_id": "2-1-6"
+                },
+                {
+                  "deliverable_id": "2-1-6-ED5",
+                  "name": "Approved document setting policy review schedule",
+                  "sub_control_id": "2-1-6"
+                },
+                {
+                  "deliverable_id": "2-1-6-ED6",
+                  "name": "Updated policy with documented and approved changes",
+                  "sub_control_id": "2-1-6"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

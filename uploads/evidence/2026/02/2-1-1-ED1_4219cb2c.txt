@@ -1,0 +1,96 @@
+═══════════════════════════════════════════════════════════════════
+INFORMATION & TECHNOLOGY ASSET MANAGEMENT POLICY
+═══════════════════════════════════════════════════════════════════
+
+Document ID: POL-AM-2025-001
+Version: v1.2
+Classification: Internal
+Department: Cybersecurity Department
+Issue Date: 2025-01-15
+Review Date: 2025-07-15
+
+───────────────────────────────────────────────────────────────────
+1. PURPOSE
+───────────────────────────────────────────────────────────────────
+
+This policy establishes cybersecurity requirements for the management 
+of all information and technology assets within the organization to 
+ensure confidentiality, integrity and availability.
+
+───────────────────────────────────────────────────────────────────
+2. SCOPE
+───────────────────────────────────────────────────────────────────
+
+This policy applies to all information and technology assets owned 
+or operated by the organization, including but not limited to:
+- Infrastructure (servers, storage systems)
+- Applications and software services
+- Network equipment
+- Workstations and end-user devices
+- Peripherals (printers, scanners)
+
+[ERROR: Missing Operating Systems from scope]
+
+───────────────────────────────────────────────────────────────────
+3. ASSET CLASSIFICATION REQUIREMENTS
+───────────────────────────────────────────────────────────────────
+
+All assets must be classified based on criticality and the data they 
+include or process. 
+
+Classification levels:
+- Critical: Essential for business operations, contains highly 
+  sensitive data
+- High: Important for operations, contains sensitive data
+- Medium: Standard business assets
+- Low: Minimal impact assets
+
+[ERROR: Missing definition of classification criteria based on 
+data sensitivity, business impact, and regulatory requirements 
+as required by control 2-1-1]
+
+───────────────────────────────────────────────────────────────────
+4. LIFECYCLE REQUIREMENTS
+───────────────────────────────────────────────────────────────────
+
+Requirements must be defined for the following stages:
+- Acquisition and procurement
+- Processing and operation
+- Storage and archival
+- Disposal and destruction
+
+[CORRECT: Lifecycle stages properly defined]
+
+───────────────────────────────────────────────────────────────────
+5. OWNERSHIP & RESPONSIBILITIES
+───────────────────────────────────────────────────────────────────
+
+Each asset must have:
+- A defined owner responsible for the asset
+- Clear accountability for asset management
+- Responsibility for classification decisions
+
+[ERROR: Missing specific roles and responsibilities requirements 
+for ownership and management as required by control 2-1-1]
+
+───────────────────────────────────────────────────────────────────
+6. IMPLEMENTATION
+───────────────────────────────────────────────────────────────────
+
+This policy shall be implemented across all departments within 
+30 days of approval.
+
+───────────────────────────────────────────────────────────────────
+APPROVAL SECTION
+───────────────────────────────────────────────────────────────────
+
+[ERROR: Missing formal approval - document shows no signature 
+or approval evidence required by control 2-1-1]
+
+Policy Status: Draft - Awaiting Approval
+
+───────────────────────────────────────────────────────────────────
+Document Classification: Internal
+TLP: White
+Page 1 of 1
+═══════════════════════════════════════════════════════════════════

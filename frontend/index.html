@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Burhan - Compliance Evaluation</title>
+    <link rel="stylesheet" href="/frontend/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Burhan</h1>
+        <p class="subtitle">NCA Compliance Evaluation System</p>
+
+        <div class="top-actions" id="topActions" style="display:none;">
+            <button class="btn-primary" onclick="evaluateAll()" id="evalAllBtn">Evaluate All Controls</button>
+            <button class="btn-success" onclick="generateReport()" id="reportBtn" disabled>Generate Aggregated Report</button>
+        </div>
+
+        <div id="subControlsContainer">
+            <!-- Sub-controls will be loaded here -->
+            <div class="loading-message">Upload a hierarchy JSON to get started.</div>
+        </div>
+
+        <div class="aggregated-report" id="aggregatedReport">
+            <div class="overall-score-box">
+                <h2>Overall Compliance Score</h2>
+                <div class="big-score" id="overallScore">--%</div>
+                <div id="overallStatus">--</div>
+            </div>
+        </div>
+
+        <!-- Knowledge Base Section -->
+        <div class="kb-section">
+            <div class="kb-header" onclick="toggleKB()">
+                <h2>Knowledge Base</h2>
+                <span id="kbToggle">+</span>
+            </div>
+            <div class="kb-content" id="kbContent" style="display:none;">
+                <div class="kb-search">
+                    <h3>Search Knowledge Base</h3>
+                    <div class="kb-search-row">
+                        <input type="text" id="kbQuery" placeholder="Search NCA-ECC guides...">
+                        <button class="btn-primary" onclick="searchKB()">Search</button>
+                    </div>
+                    <div id="kbSearchResults"></div>
+                </div>
+                <div class="kb-documents">
+                    <h3>Indexed Documents</h3>
+                    <button class="btn-primary" onclick="loadKBDocuments()" style="margin-bottom:10px;">Refresh</button>
+                    <div id="kbDocumentList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/frontend/app.js"></script>
+</body>
+</html>
