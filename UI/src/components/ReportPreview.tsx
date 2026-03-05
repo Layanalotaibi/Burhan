@@ -1,0 +1,364 @@
+import { useState } from "react";
+import { Button } from "./ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
+import { Shield, Download, FileDown, Loader2, ArrowLeft } from "lucide-react";
+
+interface ReportPreviewProps {
+  onBack: () => void;
+}
+
+const domainScores = [
+  { domain: "Governance", percentage: "90%", status: "Compliant", observations: "Policies and governance processes are well established." },
+  { domain: "Defense", percentage: "80%", status: "Partially Compliant", observations: "Certain access control and monitoring measures require updates." },
+  { domain: "Resilience", percentage: "72%", status: "Partially Compliant", observations: "Recovery testing documentation incomplete." },
+  { domain: "Third-Party & Cloud", percentage: "65%", status: "Partially Compliant", observations: "Cloud provider assessments pending." },
+  { domain: "ICS", percentage: "55%", status: "Non-Compliant", observations: "Missing evidence for system hardening and monitoring." },
+];
+
+const controlFindings = [
+  { id: "AC-01", name: "Access Control Policy", status: "Compliant", evidence: "policy.pdf", notes: "Meets ECC control requirements." },
+  { id: "AC-02", name: "Account Management", status: "Partially", evidence: "accounts.xlsx", notes: "Periodic reviews not documented." },
+  { id: "DF-03", name: "Data Encryption", status: "Non-Compliant", evidence: "config.png", notes: "Encryption standards undefined." },
+];
+
+const recommendations = [
+  "Establish periodic account review procedures (AC-02).",
+  "Implement encryption standards for data-at-rest and in-transit (DF-03).",
+  "Enhance incident response documentation and testing (RS-02).",
+  "Strengthen vendor security assessment program (TP-01).",
+];
+
+export function ReportPreview({ onBack }: ReportPreviewProps) {
+  const [exportFormat, setExportFormat] = useState("pdf");
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportComplete, setExportComplete] = useState(false);
+
+  const handleExport = () => {
+    setShowExportModal(true);
+    setIsExporting(true);
+    setExportComplete(false);
+    
+    setTimeout(() => {
+      setIsExporting(false);
+      setExportComplete(true);
+    }, 2000);
+  };
+
+  return (
+    <div className="min-h-screen" style={{ backgroundColor: "#FAF9F7" }}>
+      {/* Action Bar */}
+      <div className="bg-white border-b px-8 py-4">
+        <div className="max-w-5xl mx-auto flex items-center justify-between">
+          <Button variant="outline" onClick={onBack} className="gap-2">
+            <ArrowLeft className="w-4 h-4" />
+            Back
+          </Button>
+          <div className="flex items-center gap-3">
+            <Select value={exportFormat} onValueChange={setExportFormat}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pdf">PDF</SelectItem>
+                <SelectItem value="docx">DOCX</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button onClick={handleExport} className="gap-2" style={{ backgroundColor: "#1B6CA8" }}>
+              <Download className="w-4 h-4" />
+              Download
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Report Container */}
+      <div className="py-8 px-4">
+        <div className="max-w-5xl mx-auto bg-white shadow-sm relative overflow-hidden">
+          {/* Watermark */}
+          <div className="absolute inset-0 flex items-center justify-center opacity-[0.02] pointer-events-none">
+            <Shield className="w-[600px] h-[600px]" />
+          </div>
+
+          {/* Report Content */}
+          <div className="relative z-10 px-16 py-12">
+            
+            {/* 1. Header Section */}
+            <div className="border-b pb-8 mb-10" style={{ borderColor: "#E5E5E5" }}>
+              <div className="flex items-start justify-between">
+                <div className="space-y-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded flex items-center justify-center" style={{ backgroundColor: "#1B6CA8" }}>
+                      <Shield className="w-7 h-7 text-white" />
+                    </div>
+                    <span className="arabic-text text-3xl" style={{ color: "#1B6CA8" }}>بُرهان</span>
+                  </div>
+                  <div className="space-y-2">
+                    <h1 className="text-2xl" style={{ color: "#1B6CA8", fontWeight: 600 }}>
+                      NCA-ECC Compliance Evaluation Report
+                    </h1>
+                    <p style={{ color: "#5A5A5A", fontSize: "14px" }}>
+                      Generated by Burhan – AI-Powered Compliance Automation Platform
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="border rounded px-6 py-4 space-y-2 min-w-[300px]" style={{ borderColor: "#E5E5E5", backgroundColor: "#FAFAFA" }}>
+                  <div className="flex justify-between text-sm">
+                    <span style={{ color: "#5A5A5A" }}>Organization:</span>
+                    <span style={{ color: "#1B1B1B", fontWeight: 500 }}>Acme Corporation</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span style={{ color: "#5A5A5A" }}>Report Date:</span>
+                    <span style={{ color: "#1B1B1B", fontWeight: 500 }}>October 20, 2025</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span style={{ color: "#5A5A5A" }}>Generated By:</span>
+                    <span style={{ color: "#1B1B1B", fontWeight: 500 }}>Burhan AI Engine v1.0</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Executive Summary */}
+            <section className="mb-10">
+              <h2 className="text-xl mb-4" style={{ color: "#1B6CA8", fontWeight: 600 }}>
+                1. Executive Summary
+              </h2>
+              <div className="space-y-4" style={{ color: "#5A5A5A", lineHeight: "1.8" }}>
+                <p>
+                  This report provides a summary of the organization's cybersecurity compliance status with the 
+                  National Cybersecurity Authority's Essential Cybersecurity Controls (NCA-ECC). Burhan's AI engine 
+                  automatically analyzed uploaded evidence, assessed control compliance levels, and identified areas 
+                  requiring improvement.
+                </p>
+
+                {/* Summary Insights */}
+                <div className="pt-6">
+                  <h3 className="text-base mb-4" style={{ color: "#1B1B1B", fontWeight: 600 }}>
+                    Summary Insights
+                  </h3>
+                  <div className="grid grid-cols-2 gap-6 mb-6">
+                    {/* Overall Compliance Gauge Placeholder */}
+                    <div className="border rounded-lg p-6 text-center" style={{ borderColor: "#E5E5E5" }}>
+                      <p className="text-sm mb-4" style={{ color: "#5A5A5A" }}>Overall Compliance Percentage</p>
+                      <div className="flex items-center justify-center h-32">
+                        <svg width="120" height="120" viewBox="0 0 120 120">
+                          <circle cx="60" cy="60" r="50" fill="none" stroke="#E5E5E5" strokeWidth="12"/>
+                          <circle cx="60" cy="60" r="50" fill="none" stroke="#1B6CA8" strokeWidth="12"
+                            strokeDasharray="314" strokeDashoffset="56" transform="rotate(-90 60 60)"/>
+                        </svg>
+                        <div className="absolute text-center">
+                          <div className="text-3xl" style={{ color: "#1B6CA8", fontWeight: 600 }}>82%</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Compliance by Domain Bar Chart Placeholder */}
+                    <div className="border rounded-lg p-6" style={{ borderColor: "#E5E5E5" }}>
+                      <p className="text-sm mb-4" style={{ color: "#5A5A5A" }}>Compliance by Domain</p>
+                      <div className="space-y-3">
+                        {[
+                          { label: "Governance", value: 90 },
+                          { label: "Defense", value: 80 },
+                          { label: "Resilience", value: 72 },
+                          { label: "Third-Party", value: 65 },
+                          { label: "ICS", value: 55 },
+                        ].map((item, i) => (
+                          <div key={i}>
+                            <div className="flex justify-between text-xs mb-1" style={{ color: "#5A5A5A" }}>
+                              <span>{item.label}</span>
+                              <span>{item.value}%</span>
+                            </div>
+                            <div className="h-2 rounded-full" style={{ backgroundColor: "#E5E5E5" }}>
+                              <div className="h-2 rounded-full" style={{ 
+                                backgroundColor: "#1B6CA8", 
+                                width: `${item.value}%` 
+                              }}/>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <p>
+                  The organization achieved an overall compliance level of 82%, with strong performance in Governance 
+                  and moderate gaps in the Resilience and ICS domains.
+                </p>
+              </div>
+            </section>
+
+            {/* 3. Domain-Level Compliance Overview */}
+            <section className="mb-10">
+              <h2 className="text-xl mb-4" style={{ color: "#1B6CA8", fontWeight: 600 }}>
+                2. Domain-Level Compliance Overview
+              </h2>
+              <div className="border rounded-lg overflow-hidden" style={{ borderColor: "#E5E5E5" }}>
+                <table className="w-full">
+                  <thead>
+                    <tr style={{ backgroundColor: "#F9F9F9", borderBottom: "1px solid #E5E5E5" }}>
+                      <th className="text-left px-4 py-3 text-sm" style={{ color: "#1B1B1B", fontWeight: 600 }}>Domain</th>
+                      <th className="text-left px-4 py-3 text-sm" style={{ color: "#1B1B1B", fontWeight: 600 }}>Compliance %</th>
+                      <th className="text-left px-4 py-3 text-sm" style={{ color: "#1B1B1B", fontWeight: 600 }}>Status</th>
+                      <th className="text-left px-4 py-3 text-sm" style={{ color: "#1B1B1B", fontWeight: 600 }}>Observations</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {domainScores.map((item, i) => (
+                      <tr key={i} style={{ borderBottom: i < domainScores.length - 1 ? "1px solid #E5E5E5" : "none" }}>
+                        <td className="px-4 py-3 text-sm" style={{ color: "#1B1B1B" }}>{item.domain}</td>
+                        <td className="px-4 py-3 text-sm" style={{ color: "#1B1B1B", fontWeight: 500 }}>{item.percentage}</td>
+                        <td className="px-4 py-3 text-sm" style={{ color: "#5A5A5A" }}>{item.status}</td>
+                        <td className="px-4 py-3 text-sm" style={{ color: "#5A5A5A" }}>{item.observations}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            {/* 4. Control-Level Findings */}
+            <section className="mb-10">
+              <h2 className="text-xl mb-4" style={{ color: "#1B6CA8", fontWeight: 600 }}>
+                3. Control-Level Findings
+              </h2>
+              <div className="border rounded-lg overflow-hidden" style={{ borderColor: "#E5E5E5" }}>
+                <table className="w-full">
+                  <thead>
+                    <tr style={{ backgroundColor: "#F9F9F9", borderBottom: "1px solid #E5E5E5" }}>
+                      <th className="text-left px-4 py-3 text-sm" style={{ color: "#1B1B1B", fontWeight: 600 }}>Control ID</th>
+                      <th className="text-left px-4 py-3 text-sm" style={{ color: "#1B1B1B", fontWeight: 600 }}>Control Name</th>
+                      <th className="text-left px-4 py-3 text-sm" style={{ color: "#1B1B1B", fontWeight: 600 }}>Compliance Status</th>
+                      <th className="text-left px-4 py-3 text-sm" style={{ color: "#1B1B1B", fontWeight: 600 }}>Evidence File</th>
+                      <th className="text-left px-4 py-3 text-sm" style={{ color: "#1B1B1B", fontWeight: 600 }}>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {controlFindings.map((item, i) => (
+                      <tr key={i} style={{ borderBottom: i < controlFindings.length - 1 ? "1px solid #E5E5E5" : "none" }}>
+                        <td className="px-4 py-3 text-sm" style={{ color: "#1B6CA8", fontWeight: 500 }}>{item.id}</td>
+                        <td className="px-4 py-3 text-sm" style={{ color: "#1B1B1B" }}>{item.name}</td>
+                        <td className="px-4 py-3 text-sm" style={{ color: "#5A5A5A" }}>{item.status}</td>
+                        <td className="px-4 py-3 text-sm" style={{ color: "#5A5A5A" }}>{item.evidence}</td>
+                        <td className="px-4 py-3 text-sm" style={{ color: "#5A5A5A" }}>{item.notes}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            {/* 5. AI Recommendations */}
+            <section className="mb-10">
+              <h2 className="text-xl mb-4" style={{ color: "#1B6CA8", fontWeight: 600 }}>
+                4. Recommendations
+              </h2>
+              <div className="space-y-3">
+                {recommendations.map((rec, i) => (
+                  <div key={i} className="flex gap-3">
+                    <span style={{ color: "#1B6CA8", fontWeight: 600 }}>{i + 1}.</span>
+                    <p style={{ color: "#5A5A5A", lineHeight: "1.8" }}>{rec}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {/* 6. Conclusion */}
+            <section className="mb-10">
+              <h2 className="text-xl mb-4" style={{ color: "#1B6CA8", fontWeight: 600 }}>
+                5. Conclusion
+              </h2>
+              <p style={{ color: "#5A5A5A", lineHeight: "1.8" }}>
+                Burhan's automated analysis provides a data-driven and repeatable approach to assessing cybersecurity 
+                compliance. Addressing the identified gaps is projected to improve the overall compliance score by 
+                approximately 10–15%. Regular assessments are recommended to maintain continuous compliance readiness.
+              </p>
+            </section>
+
+            {/* 7. Verification and Approval */}
+            <section className="mb-10">
+              <h2 className="text-xl mb-6" style={{ color: "#1B6CA8", fontWeight: 600 }}>
+                Verification and Approval
+              </h2>
+              
+              {/* Official Seal */}
+              <div className="border-2 rounded-lg p-8 text-center mb-8" style={{ borderColor: "#1B6CA8", borderStyle: "solid" }}>
+                <div className="flex justify-center mb-4">
+                  <div className="w-20 h-20 rounded-full border-4 flex items-center justify-center" style={{ borderColor: "#1B6CA8" }}>
+                    <Shield className="w-10 h-10" style={{ color: "#1B6CA8" }} />
+                  </div>
+                </div>
+                <p className="text-base mb-1" style={{ color: "#1B6CA8", fontWeight: 600 }}>
+                  Official Verification Seal – Burhan AI Engine
+                </p>
+                <p className="text-sm" style={{ color: "#5A5A5A" }}>
+                  Digitally Generated Compliance Report
+                </p>
+              </div>
+
+              {/* Signature Lines */}
+              <div className="grid grid-cols-2 gap-8 mb-8">
+                <div>
+                  <p className="text-sm mb-2" style={{ color: "#5A5A5A" }}>Authorized Auditor Signature:</p>
+                  <div className="border-b-2 pb-1" style={{ borderColor: "#1B1B1B" }}>
+                    <span style={{ color: "transparent" }}>_</span>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm mb-2" style={{ color: "#5A5A5A" }}>Date:</p>
+                  <div className="border-b-2 pb-1" style={{ borderColor: "#1B1B1B" }}>
+                    <span style={{ color: "transparent" }}>_</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* 8. Footer */}
+            <div className="border-t pt-6 text-center" style={{ borderColor: "#E5E5E5" }}>
+              <p className="text-sm" style={{ color: "#5A5A5A" }}>
+                © 2025 Burhan – AI-Powered Compliance for NCA-ECC | Confidential Report for Internal Use Only
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Export Modal */}
+      <Dialog open={showExportModal} onOpenChange={setShowExportModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {isExporting ? "Exporting Report..." : "Export Complete"}
+            </DialogTitle>
+            <DialogDescription>
+              {isExporting 
+                ? `Generating your ${exportFormat.toUpperCase()} report...` 
+                : `Report successfully exported as ${exportFormat.toUpperCase()}.`
+              }
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col items-center justify-center py-8">
+            {isExporting ? (
+              <Loader2 className="w-12 h-12 animate-spin" style={{ color: "#1B6CA8" }} />
+            ) : (
+              <div className="space-y-4 text-center">
+                <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto" style={{ backgroundColor: "#E8F5E9" }}>
+                  <FileDown className="w-8 h-8" style={{ color: "#2E7D32" }} />
+                </div>
+                <p className="text-sm" style={{ color: "#5A5A5A" }}>
+                  Your report has been downloaded to your device.
+                </p>
+                <Button onClick={() => setShowExportModal(false)} className="mt-4" style={{ backgroundColor: "#1B6CA8" }}>
+                  Close
+                </Button>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
