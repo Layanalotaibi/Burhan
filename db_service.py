@@ -78,11 +78,16 @@ class DatabaseService:
                 evidence_ID INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_ID INTEGER NOT NULL,
                 deliverable_ID INTEGER NOT NULL,
+                deliverable_code TEXT,
+                sub_control_id TEXT,
+                control_name TEXT,
                 file_name TEXT NOT NULL,
                 upload_time DATETIME DEFAULT CURRENT_TIMESTAMP,
                 file_location TEXT NOT NULL,
                 file_size INTEGER,
                 file_type TEXT,
+                status TEXT DEFAULT 'non_compliant',
+                explanation TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_ID) REFERENCES Users(user_ID) ON DELETE CASCADE,
                 FOREIGN KEY (deliverable_ID) REFERENCES Deliverables(deliverable_ID) ON DELETE CASCADE
@@ -109,6 +114,25 @@ class DatabaseService:
                 UNIQUE(control_ID, deliverable_ID),
                 FOREIGN KEY (control_ID) REFERENCES Controls(control_ID) ON DELETE CASCADE,
                 FOREIGN KEY (deliverable_ID) REFERENCES Deliverables(deliverable_ID) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS EvaluationResults (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sub_control_id TEXT NOT NULL UNIQUE,
+                score REAL NOT NULL,
+                status TEXT NOT NULL,
+                deliverables_json TEXT NOT NULL,
+                evaluated_at DATETIME NOT NULL,
+                evaluation_id TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS Validations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                control_id TEXT NOT NULL UNIQUE,
+                validated INTEGER NOT NULL DEFAULT 0,
+                validator_name TEXT,
+                validated_at DATETIME,
+                notes TEXT
             );
         """)
         conn.commit()
@@ -143,15 +167,19 @@ class DatabaseService:
     # =========================================================================
 
     def save_evidence(self, user_id: int, deliverable_id: int, file_name: str,
-                      file_location: str, file_size: int = None, file_type: str = None):
+                      file_location: str, file_size: int = None, file_type: str = None,
+                      deliverable_code: str = None, sub_control_id: str = None,
+                      control_name: str = None, status: str = None, explanation: str = None):
         """Save evidence file metadata to database"""
         query = """
-            INSERT INTO Evidence (user_ID, deliverable_ID, file_name, file_location,
-                                  file_size, file_type, upload_time)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO Evidence (user_ID, deliverable_ID, deliverable_code, sub_control_id,
+                                  control_name, file_name, file_location, file_size, file_type,
+                                  status, explanation, upload_time)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
-        params = (user_id, deliverable_id, file_name, file_location,
-                  file_size, file_type, datetime.now().isoformat())
+        params = (user_id, deliverable_id, deliverable_code, sub_control_id, control_name,
+                  file_name, file_location, file_size, file_type, status, explanation,
+                  datetime.now().isoformat())
         return self.execute_query(query, params)
 
     def get_evidence_by_deliverable(self, deliverable_id: int):
@@ -242,6 +270,105 @@ class DatabaseService:
             VALUES (?, ?, ?, ?)
         """
         return self.execute_query(query, ('Admin', 'admin@burhan.sa', 'poc_password', 'admin'))
+
+
+    # =========================================================================
+    # Evaluation Results Operations
+    # =========================================================================
+
+    def save_evaluation_result(self, sub_control_id: str, score: float, status: str,
+                                deliverables: list, evaluated_at: str, evaluation_id: str):
+        """Save or update sub-control evaluation result"""
+        import json
+        query = """
+            INSERT INTO EvaluationResults (sub_control_id, score, status, deliverables_json, evaluated_at, evaluation_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(sub_control_id) DO UPDATE SET
+                score=excluded.score, status=excluded.status,
+                deliverables_json=excluded.deliverables_json,
+                evaluated_at=excluded.evaluated_at, evaluation_id=excluded.evaluation_id
+        """
+        return self.execute_query(query, (sub_control_id, score, status,
+                                          json.dumps(deliverables), evaluated_at, evaluation_id))
+
+    def load_all_evaluation_results(self):
+        """Load all evaluation results as a dict keyed by sub_control_id"""
+        import json
+        rows = self.execute_query("SELECT * FROM EvaluationResults", fetch=True)
+        result = {}
+        for row in (rows or []):
+            result[row['sub_control_id']] = {
+                "score": row['score'],
+                "status": row['status'],
+                "deliverables": json.loads(row['deliverables_json']),
+                "evaluated_at": row['evaluated_at'],
+                "evaluation_id": row['evaluation_id']
+            }
+        return result
+
+    # =========================================================================
+    # Validation Operations
+    # =========================================================================
+
+    def save_validation(self, control_id: str, validated: bool, validator_name: str = "",
+                        validated_at: str = None, notes: str = ""):
+        """Save or update human validation for a control"""
+        query = """
+            INSERT INTO Validations (control_id, validated, validator_name, validated_at, notes)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(control_id) DO UPDATE SET
+                validated=excluded.validated, validator_name=excluded.validator_name,
+                validated_at=excluded.validated_at, notes=excluded.notes
+        """
+        return self.execute_query(query, (control_id, 1 if validated else 0,
+                                          validator_name, validated_at, notes))
+
+    def delete_validation(self, control_id: str):
+        """Delete validation for a control"""
+        return self.execute_query("DELETE FROM Validations WHERE control_id = ?", (control_id,))
+
+    def load_all_validations(self):
+        """Load all validations as a dict keyed by control_id"""
+        rows = self.execute_query("SELECT * FROM Validations WHERE validated = 1", fetch=True)
+        result = {}
+        for row in (rows or []):
+            result[row['control_id']] = {
+                "validated": bool(row['validated']),
+                "validator_name": row['validator_name'] or "",
+                "validated_at": row['validated_at'] or "",
+                "notes": row['notes'] or ""
+            }
+        return result
+
+    # =========================================================================
+    # Evidence Store Operations
+    # =========================================================================
+
+    def load_evidence_store(self):
+        """Load all evidence as a list matching the in-memory evidence_store format"""
+        query = """
+            SELECT e.evidence_ID, e.deliverable_code, e.sub_control_id, e.control_name,
+                   e.file_name, e.upload_time, e.status, e.explanation,
+                   d.deliverable_title
+            FROM Evidence e
+            JOIN Deliverables d ON e.deliverable_ID = d.deliverable_ID
+            ORDER BY e.upload_time DESC
+        """
+        rows = self.execute_query(query, fetch=True)
+        result = []
+        for row in (rows or []):
+            result.append({
+                "id": str(row['evidence_ID']),
+                "deliverable_id": row['deliverable_code'] or "",
+                "deliverable_name": row['deliverable_title'],
+                "sub_control_id": row['sub_control_id'] or "",
+                "control_name": row['control_name'] or "",
+                "file_name": row['file_name'],
+                "upload_date": row['upload_time'],
+                "status": row['status'] or "non_compliant",
+                "explanation": row['explanation'] or ""
+            })
+        return result
 
 
 # Singleton instance

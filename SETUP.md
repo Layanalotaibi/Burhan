@@ -73,3 +73,10 @@ http://localhost:3000
 ## Windows Notes
 - Use `venv\Scripts\activate` instead of `source venv/bin/activate`
 - Everything else is the same
+
+
+..... 
+python server.py
+
+cd /Users/layanalotaibi/burhan-server/burhanUI
+./node_modules/.bin/vite

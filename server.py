@@ -2,6 +2,11 @@
 Burhan - NCA Compliance Evaluation System (POC)
 Backend API Server
 """
+# Load .env before any imports that need env vars (e.g. HF_HUB_OFFLINE)
+import pathlib as _pathlib
+from dotenv import load_dotenv as _load_dotenv
+_load_dotenv(_pathlib.Path(__file__).parent / ".env")
+
 from fastapi import FastAPI, Form, UploadFile, File, Request
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -81,6 +86,21 @@ validation_store = {}
 
 
 @app.on_event("startup")
+async def load_persisted_data():
+    """Load persisted data from SQLite into in-memory stores on startup."""
+    global evidence_store, evaluation_results_store, validation_store
+    if DB_AVAILABLE:
+        try:
+            evaluation_results_store = db.load_all_evaluation_results()
+            validation_store = db.load_all_validations()
+            evidence_store = db.load_evidence_store()
+            print(f"[DB] Loaded: {len(evaluation_results_store)} evaluations, "
+                  f"{len(validation_store)} validations, {len(evidence_store)} evidence")
+        except Exception as e:
+            print(f"[DB] Load error: {e}")
+
+
+@app.on_event("startup")
 async def auto_index_default_kb():
     """Auto-index the default ECC Guide PDF into ChromaDB on startup."""
     if not KB_AVAILABLE:
@@ -117,7 +137,8 @@ def get_llm_client():
     use_ollama = os.getenv("USE_OLLAMA", "false").lower() == "true"
 
     if use_ollama:
-        return OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
+        base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+        return OpenAI(base_url=base_url, api_key="ollama")
 
     api_key = os.getenv("OPENROUTER_API_KEY")
     if api_key:
@@ -232,15 +253,29 @@ async def get_sub_controls():
 
     for sd in hierarchy["sub_domains"]:
         for ctrl in sd["controls"]:
-            for sc in ctrl["sub_controls"]:
+            scs = ctrl.get("sub_controls", [])
+            if scs:
+                for sc in scs:
+                    sub_controls.append({
+                        "sub_control_id": sc["sub_control_id"],
+                        "name": sc["name"],
+                        "control_id": ctrl["control_id"],
+                        "control_name": ctrl["name"],
+                        "deliverables": [
+                            {"id": d["deliverable_id"], "name": d["name"]}
+                            for d in sc.get("expected_deliverables", [])
+                        ]
+                    })
+            else:
+                # Control itself is the evaluatable item
                 sub_controls.append({
-                    "sub_control_id": sc["sub_control_id"],
-                    "name": sc["name"],
+                    "sub_control_id": ctrl["control_id"],
+                    "name": ctrl["name"],
                     "control_id": ctrl["control_id"],
                     "control_name": ctrl["name"],
                     "deliverables": [
                         {"id": d["deliverable_id"], "name": d["name"]}
-                        for d in sc["expected_deliverables"]
+                        for d in ctrl.get("expected_deliverables", [])
                     ]
                 })
 
@@ -271,11 +306,26 @@ def extract_text_from_file(file_content: bytes, content_type: str, filename: str
         return text.strip()
 
     elif content_type in ['application/msword']:
-        # For .doc files, just return a note (would need additional library)
         return "[Word .doc file - please convert to .docx]"
 
+    elif content_type in [
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-excel',
+        'application/octet-stream'
+    ] or filename.lower().endswith(('.xlsx', '.xls')):
+        import openpyxl, io
+        wb = openpyxl.load_workbook(io.BytesIO(file_content), data_only=True)
+        parts = []
+        for sheet in wb.worksheets:
+            parts.append(f"[Sheet: {sheet.title}]")
+            for row in sheet.iter_rows(values_only=True):
+                row_values = [str(cell) if cell is not None else "" for cell in row]
+                if any(v.strip() for v in row_values):
+                    parts.append("\t".join(row_values))
+        return "\n".join(parts).strip()
+
     else:
-        return None  # For images, we'll handle separately
+        return None  # For images, handled separately
 
 
 @app.post("/api/evaluate-subcontrol")
@@ -301,31 +351,76 @@ async def evaluate_subcontrol(
     sub_control = sc_data["sub_control"]
     control = sc_data["control"]
 
-    # Map deliverable_id to file
-    evidence_map = {}
-    if deliverable_ids and deliverable_ids[0] == "__all__":
-        # Single upload mode: all files apply to all deliverables
-        for deliverable in sub_control["expected_deliverables"]:
-            if files:
-                evidence_map[deliverable["deliverable_id"]] = files[0]
-    else:
-        for i, del_id in enumerate(deliverable_ids):
-            if i < len(files):
-                evidence_map[del_id] = files[i]
+    # Read all uploaded files upfront — evidence is not tied to specific deliverables
+    all_evidence = []  # list of {filename, content_type, file_content}
+    for file in files:
+        file_content = await file.read()
+        all_evidence.append({
+            "filename": file.filename,
+            "content_type": file.content_type,
+            "file_content": file_content
+        })
+
+    # Save all files to disk and DB once (not per-deliverable)
+    user_id = db.get_default_user() if DB_AVAILABLE else None
+    for ev in all_evidence:
+        saved_file = save_file_locally(ev["file_content"], ev["filename"], sub_control_id)
+        ev["file_location"] = saved_file["file_location"]
+        ev["file_size"] = saved_file["file_size"]
+        print(f"  [FILE] Saved: {saved_file['file_location']}")
+        if DB_AVAILABLE:
+            try:
+                # Save evidence linked to sub-control (not a specific deliverable)
+                first_deliverable = sub_control["expected_deliverables"][0] if sub_control["expected_deliverables"] else None
+                if first_deliverable:
+                    db_deliverable_id = db.get_or_create_deliverable(
+                        first_deliverable["deliverable_id"], first_deliverable["name"]
+                    )
+                    db.save_evidence(
+                        user_id=user_id,
+                        deliverable_id=db_deliverable_id,
+                        file_name=saved_file["file_name"],
+                        file_location=saved_file["file_location"],
+                        file_size=saved_file["file_size"],
+                        file_type=ev["content_type"],
+                        deliverable_code="",
+                        sub_control_id=sub_control_id,
+                        control_name=control["name"]
+                    )
+            except Exception as db_err:
+                print(f"    DB save error: {db_err}")
+
+    # Build combined evidence text and image list from all files
+    combined_text_parts = []
+    combined_images = []
+    for ev in all_evidence:
+        ct = ev["content_type"]
+        if ct in ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp']:
+            combined_images.append({
+                "filename": ev["filename"],
+                "content_type": ct,
+                "base64": base64.b64encode(ev["file_content"]).decode('utf-8')
+            })
+        else:
+            text = extract_text_from_file(ev["file_content"], ct, ev["filename"])
+            if text:
+                combined_text_parts.append(f"[File: {ev['filename']}]\n{text[:3000]}")
+
+    combined_evidence_text = "\n\n---\n\n".join(combined_text_parts) if combined_text_parts else ""
+    has_evidence = bool(combined_evidence_text or combined_images)
 
     # LLM settings
     model_name = get_model_name()
     deliverable_results = []
     scores = []
 
-    print(f"\nEvaluating {sub_control_id}: {sub_control['name']}")
+    print(f"\nEvaluating {sub_control_id}: {sub_control['name']} ({len(all_evidence)} files)")
 
-    # Evaluate each deliverable
+    # Evaluate each deliverable using ALL evidence
     for deliverable in sub_control["expected_deliverables"]:
         del_id = deliverable["deliverable_id"]
 
-        # Check if we have evidence for this deliverable
-        if del_id not in evidence_map:
+        if not has_evidence:
             deliverable_results.append({
                 "deliverable_id": del_id,
                 "name": deliverable["name"],
@@ -336,37 +431,7 @@ async def evaluate_subcontrol(
             print(f"  [-] {del_id}: No evidence")
             continue
 
-        file = evidence_map[del_id]
-        file_content = await file.read()
-        await file.seek(0)  # Reset for potential re-read
-        content_type = file.content_type
-        filename = file.filename
-
-        print(f"  Checking {del_id} with file: {filename}")
-
-        # Save file locally
-        saved_file = save_file_locally(file_content, filename, del_id)
-        print(f"    Saved to: {saved_file['file_location']}")
-
-        # Save evidence to database
-        if DB_AVAILABLE:
-            try:
-                user_id = db.get_default_user()
-                db_deliverable_id = db.get_or_create_deliverable(del_id, deliverable["name"])
-                db.save_evidence(
-                    user_id=user_id,
-                    deliverable_id=db_deliverable_id,
-                    file_name=saved_file["file_name"],
-                    file_location=saved_file["file_location"],
-                    file_size=saved_file["file_size"],
-                    file_type=content_type
-                )
-                print(f"    Evidence saved to database")
-            except Exception as db_err:
-                print(f"    DB save error: {db_err}")
-
-        # Check if it's an image
-        is_image = content_type in ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp']
+        print(f"  Checking {del_id}")
 
         # RAG: Retrieve relevant KB chunks for this deliverable
         kb_context = ""
@@ -386,7 +451,7 @@ async def evaluate_subcontrol(
         # Build the reference section
         if kb_context:
             reference_section = f"""FRAMEWORK REFERENCE (from Knowledge Base):
-{kb_context[:3000]}
+{kb_context[:2000]}
 
 DELIVERABLE TO CHECK:
 "{deliverable['name']}"
@@ -399,42 +464,33 @@ Use the framework reference above as the evaluation criteria."""
 Evaluate based on the deliverable name and cybersecurity best practices."""
 
         try:
-            if is_image:
-                # For images, send as base64 with vision capability
-                image_base64 = base64.b64encode(file_content).decode('utf-8')
-                messages = [
+            # Build message content — include all images + all text
+            if combined_images:
+                content = [
                     {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": f"""You are a cybersecurity compliance evaluator.
+                        "type": "text",
+                        "text": f"""You are a cybersecurity compliance evaluator.
 
 CONTROL: {control['name']}
 SUB-CONTROL: {sub_control['name']}
 
 {reference_section}
 
-Look at the attached image evidence and evaluate if it proves the deliverable.
+The following evidence files were submitted (may include text and images).
+Evaluate ALL provided evidence together to determine if the deliverable is satisfied.
+{f'TEXT EVIDENCE:{chr(10)}{combined_evidence_text[:2000]}' if combined_evidence_text else ''}
 
 Return JSON only: {{"score": 0 or 1, "explanation": "brief reason"}}
 Score 1 = evidence proves deliverable, Score 0 = not proven"""
-                            },
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:{content_type};base64,{image_base64}"
-                                }
-                            }
-                        ]
                     }
                 ]
+                for img in combined_images:
+                    content.append({
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{img['content_type']};base64,{img['base64']}"}
+                    })
+                messages = [{"role": "user", "content": content}]
             else:
-                # Extract text for non-image files
-                evidence_text = extract_text_from_file(file_content, content_type, filename)
-                if evidence_text is None:
-                    raise Exception(f"Unsupported file type: {content_type}")
-
                 messages = [
                     {
                         "role": "user",
@@ -445,8 +501,8 @@ SUB-CONTROL: {sub_control['name']}
 
 {reference_section}
 
-EVIDENCE (from file: {filename}):
-{evidence_text[:4000]}
+EVIDENCE ({len(all_evidence)} file(s) submitted):
+{combined_evidence_text[:4000]}
 
 Return JSON only: {{"score": 0 or 1, "explanation": "brief reason"}}
 Score 1 = evidence proves deliverable, Score 0 = not proven"""
@@ -499,11 +555,12 @@ Score 1 = evidence proves deliverable, Score 0 = not proven"""
             if DB_AVAILABLE:
                 try:
                     grade = "compliant" if score == 1 else "non_compliant"
+                    explanation_text = result.get("explanation", "")
                     db_deliverable_id = db.get_or_create_deliverable(del_id, deliverable["name"])
                     db.update_deliverable_evaluation(
                         deliverable_id=db_deliverable_id,
                         grade=grade,
-                        justification=result.get("explanation", "")
+                        justification=explanation_text
                     )
                 except Exception as db_err:
                     print(f"    DB evaluation save error: {db_err}")
@@ -534,30 +591,38 @@ Score 1 = evidence proves deliverable, Score 0 = not proven"""
         }
 
     # Store evaluation result for dashboard
+    eval_status = "compliant" if sc_score == 1.0 else ("partial" if sc_score == 0.5 else "non_compliant")
+    eval_time = datetime.now().isoformat()
     evaluation_results_store[sub_control_id] = {
         "score": sc_score,
-        "status": "compliant" if sc_score == 1.0 else ("partial" if sc_score == 0.5 else "non_compliant"),
+        "status": eval_status,
         "deliverables": deliverable_results,
-        "evaluated_at": datetime.now().isoformat(),
+        "evaluated_at": eval_time,
         "evaluation_id": eval_id
     }
 
+    # Persist evaluation result to SQLite
+    if DB_AVAILABLE:
+        try:
+            db.save_evaluation_result(sub_control_id, sc_score, eval_status,
+                                      deliverable_results, eval_time, eval_id)
+        except Exception as db_err:
+            print(f"[DB] Save evaluation error: {db_err}")
+
     # Store evidence for evidence listing
+    file_names = ", ".join(ev["filename"] for ev in all_evidence) or "N/A"
     for d in deliverable_results:
-        if d["score"] >= 0:
-            del_id = d["deliverable_id"]
-            file_info = evidence_map.get(del_id)
-            evidence_store.append({
-                "id": str(uuid.uuid4())[:8],
-                "deliverable_id": del_id,
-                "deliverable_name": d["name"],
-                "sub_control_id": sub_control_id,
-                "control_name": control["name"],
-                "file_name": file_info.filename if file_info else "N/A",
-                "upload_date": datetime.now().isoformat(),
-                "status": "compliant" if d["score"] == 1 else "non_compliant",
-                "explanation": d["explanation"]
-            })
+        evidence_store.append({
+            "id": str(uuid.uuid4())[:8],
+            "deliverable_id": d["deliverable_id"],
+            "deliverable_name": d["name"],
+            "sub_control_id": sub_control_id,
+            "control_name": control["name"],
+            "file_name": file_names,
+            "upload_date": datetime.now().isoformat(),
+            "status": "compliant" if d["score"] == 1 else "non_compliant",
+            "explanation": d["explanation"]
+        })
 
     return {
         "status": "success",
@@ -944,15 +1009,26 @@ class ValidationRequest(BaseModel):
 @app.post("/api/validation/save")
 async def save_validation(req: ValidationRequest):
     """Save human validation for a control"""
+    validated_at = datetime.now().isoformat()
     if req.validated:
         validation_store[req.control_id] = {
             "validated": True,
             "validator_name": req.validator_name,
-            "validated_at": datetime.now().isoformat(),
+            "validated_at": validated_at,
             "notes": req.notes
         }
+        if DB_AVAILABLE:
+            try:
+                db.save_validation(req.control_id, True, req.validator_name, validated_at, req.notes)
+            except Exception as e:
+                print(f"[DB] Save validation error: {e}")
     else:
         validation_store.pop(req.control_id, None)
+        if DB_AVAILABLE:
+            try:
+                db.delete_validation(req.control_id)
+            except Exception as e:
+                print(f"[DB] Delete validation error: {e}")
 
     return {"status": "success", "validation": validation_store.get(req.control_id)}
 

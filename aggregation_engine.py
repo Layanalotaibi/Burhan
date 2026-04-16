@@ -2,9 +2,8 @@
 Aggregation & Scoring Engine for Burhan Compliance System
 
 Scoring Rules:
-- Deliverable Level: Binary only (0 or 1)
-- Evidence Level: Binary logic (all 1 → 1, all 0 → 0, mixed → 0.5)
-- Sub-Control Level: Binary logic (all 1 → 1, all 0 → 0, mixed → 0.5)
+- Deliverable Level: Binary only (0 or 1) — scored by LLM
+- Sub-Control Level: Average of deliverable scores
 - Control Level: Average of sub-control scores
 - Sub-Domain Level: Average of control scores
 - Domain Level: Average of sub-domain scores
@@ -73,7 +72,7 @@ class AggregationEngine:
     ) -> Dict:
         """
         Aggregates all deliverable scores under a sub-control.
-        Applies binary logic (all 1 / all 0 / mixed → 0.5)
+        Uses average of deliverable scores for percentage-based reporting.
 
         Args:
             sub_control_id: ID of the sub-control
@@ -84,7 +83,7 @@ class AggregationEngine:
             SubControlResult as dict
         """
         scores = [d["score"] for d in deliverable_results]
-        score = self.calculate_binary_score(scores)
+        score = self.calculate_average_score(scores)
         status = self.get_status(score)
 
         return {
@@ -215,13 +214,12 @@ class AggregationEngine:
             for control in sub_domain["controls"]:
                 sub_control_results = []
 
-                for sub_control in control["sub_controls"]:
-                    # Collect deliverable results for this sub-control
+                sub_controls = control.get("sub_controls", [])
+                if not sub_controls:
+                    # Control has deliverables directly — treat as a virtual sub-control
                     sc_deliverable_results = []
-
-                    for deliverable in sub_control["expected_deliverables"]:
+                    for deliverable in control.get("expected_deliverables", []):
                         d_id = deliverable["deliverable_id"]
-
                         if d_id in deliverable_results:
                             result = deliverable_results[d_id]
                             sc_deliverable_results.append({
@@ -232,7 +230,6 @@ class AggregationEngine:
                                 "explanation": result.get("explanation", "")
                             })
                         else:
-                            # No result for this deliverable - mark as non-compliant
                             sc_deliverable_results.append({
                                 "deliverable_id": d_id,
                                 "name": deliverable["name"],
@@ -240,14 +237,46 @@ class AggregationEngine:
                                 "status": "Non-Compliant",
                                 "explanation": "No evidence provided"
                             })
-
-                    # Aggregate sub-control
                     sc_result = self.aggregate_sub_control(
-                        sub_control["sub_control_id"],
-                        sub_control["name"],
+                        control["control_id"],
+                        control["name"],
                         sc_deliverable_results
                     )
                     sub_control_results.append(sc_result)
+                else:
+                    for sub_control in sub_controls:
+                        # Collect deliverable results for this sub-control
+                        sc_deliverable_results = []
+
+                        for deliverable in sub_control["expected_deliverables"]:
+                            d_id = deliverable["deliverable_id"]
+
+                            if d_id in deliverable_results:
+                                result = deliverable_results[d_id]
+                                sc_deliverable_results.append({
+                                    "deliverable_id": d_id,
+                                    "name": deliverable["name"],
+                                    "score": result["score"],
+                                    "status": self.get_status(result["score"]),
+                                    "explanation": result.get("explanation", "")
+                                })
+                            else:
+                                # No result for this deliverable - mark as non-compliant
+                                sc_deliverable_results.append({
+                                    "deliverable_id": d_id,
+                                    "name": deliverable["name"],
+                                    "score": 0,
+                                    "status": "Non-Compliant",
+                                    "explanation": "No evidence provided"
+                                })
+
+                        # Aggregate sub-control
+                        sc_result = self.aggregate_sub_control(
+                            sub_control["sub_control_id"],
+                            sub_control["name"],
+                            sc_deliverable_results
+                        )
+                        sub_control_results.append(sc_result)
 
                 # Aggregate control
                 ctrl_result = self.aggregate_control(
