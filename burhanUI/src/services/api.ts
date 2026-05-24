@@ -116,6 +116,13 @@ export async function generateReport() {
   return request("/report/generate");
 }
 
+export async function generateScopedReport(subDomainIds: string[], companyName: string = "") {
+  return request("/report/generate-scoped", {
+    method: "POST",
+    body: JSON.stringify({ sub_domain_ids: subDomainIds, company_name: companyName }),
+  });
+}
+
 // =============================================================================
 // Dashboard
 // =============================================================================
@@ -130,6 +137,10 @@ export async function getDashboardStats() {
 
 export async function getEvidenceList() {
   return request("/evidence/list");
+}
+
+export async function deleteEvidence(evidenceId: string) {
+  return request(`/evidence/${encodeURIComponent(evidenceId)}`, { method: "DELETE" });
 }
 
 export async function getControlDetails(controlId: string) {
@@ -167,4 +178,24 @@ export async function searchKB(query: string, n: number = 5) {
 
 export async function getKBDocuments() {
   return request("/kb/documents");
+}
+
+export async function resetAllData() {
+  return request("/reset", { method: "POST" });
+}
+
+export async function getOrgSettings() {
+  return request("/org/settings");
+}
+
+export async function updateOrgSettings(data: { company_name?: string; industry?: string; org_size?: string; country?: string }) {
+  return request("/org/settings", { method: "PUT", body: JSON.stringify(data) });
+}
+
+export async function updateUserProfile(data: { name?: string; email?: string }) {
+  return request("/user/profile", { method: "PUT", body: JSON.stringify(data) });
+}
+
+export async function getUserProfile(email: string = "admin@burhan.sa") {
+  return request(`/user/profile?email=${email}`);
 }

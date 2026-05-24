@@ -83,6 +83,14 @@ evaluation_results_store = {}
 # Human validation store: {control_id: {validated: bool, validator_name: str, validated_at: str, notes: str}}
 validation_store = {}
 
+# Organization settings store
+org_settings_store = {
+    "company_name": "",
+    "industry": "financial",
+    "org_size": "medium",
+    "country": "sa",
+}
+
 
 
 @app.on_event("startup")
@@ -464,6 +472,12 @@ Use the framework reference above as the evaluation criteria."""
 Evaluate based on the deliverable name and cybersecurity best practices."""
 
         try:
+            consistency_note = """IMPORTANT EVALUATION RULES:
+- Apply the same standard consistently across all deliverables for this sub-control.
+- If the evidence is a template or draft (not approved/signed/customized), apply this judgment to ALL deliverables equally — do not score some as compliant and others as non-compliant based on the same flaw.
+- If the evidence partially satisfies a deliverable, score 0 (not proven). Only score 1 if the deliverable is clearly and fully satisfied.
+- Be strict and consistent: the same evidence quality should yield the same score pattern."""
+
             # Build message content — include all images + all text
             if combined_images:
                 content = [
@@ -474,6 +488,8 @@ Evaluate based on the deliverable name and cybersecurity best practices."""
 CONTROL: {control['name']}
 SUB-CONTROL: {sub_control['name']}
 
+{consistency_note}
+
 {reference_section}
 
 The following evidence files were submitted (may include text and images).
@@ -481,7 +497,7 @@ Evaluate ALL provided evidence together to determine if the deliverable is satis
 {f'TEXT EVIDENCE:{chr(10)}{combined_evidence_text[:2000]}' if combined_evidence_text else ''}
 
 Return JSON only: {{"score": 0 or 1, "explanation": "brief reason"}}
-Score 1 = evidence proves deliverable, Score 0 = not proven"""
+Score 1 = evidence clearly and fully proves deliverable, Score 0 = not proven or only partially proven"""
                     }
                 ]
                 for img in combined_images:
@@ -499,13 +515,15 @@ Score 1 = evidence proves deliverable, Score 0 = not proven"""
 CONTROL: {control['name']}
 SUB-CONTROL: {sub_control['name']}
 
+{consistency_note}
+
 {reference_section}
 
 EVIDENCE ({len(all_evidence)} file(s) submitted):
 {combined_evidence_text[:4000]}
 
 Return JSON only: {{"score": 0 or 1, "explanation": "brief reason"}}
-Score 1 = evidence proves deliverable, Score 0 = not proven"""
+Score 1 = evidence clearly and fully proves deliverable, Score 0 = not proven or only partially proven"""
                     }
                 ]
 
@@ -518,6 +536,30 @@ Score 1 = evidence proves deliverable, Score 0 = not proven"""
 
             text = response.choices[0].message.content
             print(f"    Raw: {text[:200] if text else 'EMPTY'}...")
+
+            # Retry with a shorter prompt if the model returns empty content
+            if not text:
+                print(f"    [RETRY] Empty response — retrying with simplified prompt...")
+                fallback_messages = [
+                    {
+                        "role": "user",
+                        "content": f"""Cybersecurity compliance check.
+
+Deliverable: "{deliverable['name']}"
+
+Evidence: {combined_evidence_text[:2000] if combined_evidence_text else "No text evidence provided"}
+
+Does the evidence prove this deliverable? Reply with JSON only: {{"score": 0 or 1, "explanation": "reason"}}"""
+                    }
+                ]
+                fallback_response = client.chat.completions.create(
+                    model=model_name,
+                    max_tokens=500,
+                    temperature=0.1,
+                    messages=fallback_messages
+                )
+                text = fallback_response.choices[0].message.content
+                print(f"    [RETRY] Raw: {text[:200] if text else 'STILL EMPTY'}...")
 
             if not text:
                 raise Exception("Empty response from model")
@@ -608,6 +650,44 @@ Score 1 = evidence proves deliverable, Score 0 = not proven"""
                                       deliverable_results, eval_time, eval_id)
         except Exception as db_err:
             print(f"[DB] Save evaluation error: {db_err}")
+
+    # Recompute parent control score from all evaluated sub-controls
+    parent_control_id = control["control_id"]
+    from controls_data import get_ecc_data
+    ecc_data = get_ecc_data()
+    if ecc_data:
+        for domain in ecc_data.get("domains", []):
+            for sd in domain.get("sub_domains", []):
+                for ctrl in sd.get("controls", []):
+                    if ctrl["control_id"] == parent_control_id:
+                        scs = ctrl.get("sub_controls", [])
+                        if scs:
+                            sc_scores = []
+                            sc_results = []
+                            for sc in scs:
+                                sc_id = sc["sub_control_id"]
+                                if sc_id in evaluation_results_store:
+                                    sc_scores.append(evaluation_results_store[sc_id]["score"])
+                                    sc_results.append(evaluation_results_store[sc_id])
+                            if sc_scores:
+                                ctrl_score = round(engine.calculate_average_score(sc_scores), 2)
+                                ctrl_status = "compliant" if ctrl_score == 1.0 else ("partial" if ctrl_score > 0 else "non_compliant")
+                                ctrl_time = datetime.now().isoformat()
+                                evaluation_results_store[parent_control_id] = {
+                                    "score": ctrl_score,
+                                    "status": ctrl_status,
+                                    "deliverables": [],
+                                    "sub_control_results": sc_results,
+                                    "evaluated_at": ctrl_time,
+                                    "evaluation_id": eval_id
+                                }
+                                if DB_AVAILABLE:
+                                    try:
+                                        db.save_evaluation_result(parent_control_id, ctrl_score, ctrl_status,
+                                                                  [], ctrl_time, eval_id)
+                                    except Exception as db_err:
+                                        print(f"[DB] Save control score error: {db_err}")
+                                print(f"  [CTRL] {parent_control_id} score updated: {ctrl_score}")
 
     # Store evidence for evidence listing
     file_names = ", ".join(ev["filename"] for ev in all_evidence) or "N/A"
@@ -752,6 +832,30 @@ async def update_profile(req: ProfileUpdateRequest):
     return {"status": "error", "message": "User not found"}
 
 
+class OrgSettingsRequest(BaseModel):
+    company_name: Optional[str] = None
+    industry: Optional[str] = None
+    org_size: Optional[str] = None
+    country: Optional[str] = None
+
+@app.get("/api/org/settings")
+async def get_org_settings():
+    return {"status": "success", "settings": org_settings_store}
+
+@app.put("/api/org/settings")
+async def update_org_settings(req: OrgSettingsRequest):
+    global org_settings_store
+    if req.company_name is not None:
+        org_settings_store["company_name"] = req.company_name
+    if req.industry is not None:
+        org_settings_store["industry"] = req.industry
+    if req.org_size is not None:
+        org_settings_store["org_size"] = req.org_size
+    if req.country is not None:
+        org_settings_store["country"] = req.country
+    return {"status": "success", "settings": org_settings_store}
+
+
 # =============================================================================
 # Dashboard Stats API Routes
 # =============================================================================
@@ -850,6 +954,19 @@ async def get_full_hierarchy():
 async def list_evidence():
     """List all uploaded evidence"""
     return {"status": "success", "evidence": evidence_store}
+
+
+@app.delete("/api/evidence/{evidence_id}")
+async def delete_evidence(evidence_id: str):
+    """Delete an evidence entry by ID"""
+    global evidence_store
+    evidence_store = [e for e in evidence_store if e["id"] != evidence_id]
+    if DB_AVAILABLE:
+        try:
+            db.execute_query("DELETE FROM Evidence WHERE evidence_ID = ?", (int(evidence_id),))
+        except Exception:
+            pass
+    return {"status": "success"}
 
 
 # =============================================================================
@@ -956,6 +1073,7 @@ async def generate_report():
         "status": "success",
         "report": {
             "generated_at": report_date,
+            "company_name": org_settings_store.get("company_name", ""),
             "overall_score": overall_score,
             "total_controls": total_controls,
             "total_evaluated": total_evaluated,
@@ -967,6 +1085,122 @@ async def generate_report():
             "domain_results": domain_results,
             "recommendations": recommendations,
             "evidence_count": len(evidence_store),
+        }
+    }
+
+
+# =============================================================================
+# Scoped Report (selected sub-domains)
+# =============================================================================
+
+class ScopedReportRequest(BaseModel):
+    sub_domain_ids: List[str]
+    company_name: Optional[str] = ""
+
+@app.post("/api/report/generate-scoped")
+async def generate_scoped_report(req: ScopedReportRequest):
+    """Generate a compliance report filtered to specific sub-domains"""
+    from controls_data import get_ecc_data
+
+    data = get_ecc_data()
+    report_date = datetime.now().isoformat()
+    selected_ids = set(req.sub_domain_ids)
+
+    domain_results = []
+    total_controls = 0
+    total_evaluated = 0
+    total_compliant = 0
+    total_partial = 0
+    total_non_compliant = 0
+
+    if data and "domains" in data:
+        for domain in data["domains"]:
+            domain_controls = 0
+            domain_evaluated = 0
+            domain_compliant = 0
+            control_findings = []
+
+            for sd in domain.get("sub_domains", []):
+                if sd["sub_domain_id"] not in selected_ids:
+                    continue
+                for ctrl in sd.get("controls", []):
+                    scs = ctrl.get("sub_controls", [])
+                    items = scs if scs else [ctrl]
+                    for item in items:
+                        item_id = item.get("sub_control_id", item.get("control_id"))
+                        domain_controls += 1
+                        total_controls += 1
+                        eval_result = evaluation_results_store.get(item_id)
+                        val_result = validation_store.get(item_id)
+                        if eval_result:
+                            domain_evaluated += 1
+                            total_evaluated += 1
+                            score = eval_result["score"]
+                            if score == 1.0:
+                                domain_compliant += 1
+                                total_compliant += 1
+                                status = "Compliant"
+                            elif score == 0.0:
+                                total_non_compliant += 1
+                                status = "Non-Compliant"
+                            else:
+                                total_partial += 1
+                                status = "Partial"
+                            control_evidence = [e for e in evidence_store if e.get("sub_control_id") == item_id]
+                            control_findings.append({
+                                "control_id": item_id,
+                                "name": item.get("name", ""),
+                                "sub_domain": sd["sub_domain_id"],
+                                "score": score,
+                                "status": status,
+                                "evidence_files": [e.get("file_name", "") for e in control_evidence],
+                                "deliverables": eval_result.get("deliverables", []),
+                                "evaluated_at": eval_result.get("evaluated_at", ""),
+                                "validated": val_result is not None and val_result.get("validated", False),
+                                "validator": val_result.get("validator_name", "") if val_result else "",
+                            })
+
+            if domain_controls > 0:
+                domain_progress = round((domain_compliant / domain_controls * 100)) if domain_controls > 0 else 0
+                domain_results.append({
+                    "domain_id": domain["domain_id"],
+                    "name": domain["name"],
+                    "total_controls": domain_controls,
+                    "evaluated": domain_evaluated,
+                    "compliant": domain_compliant,
+                    "progress": domain_progress,
+                    "status": "Compliant" if domain_progress >= 80 else "Partially Compliant" if domain_progress >= 40 else "Non-Compliant",
+                    "control_findings": control_findings,
+                })
+
+    not_evaluated = total_controls - total_evaluated
+    recommendations = []
+    if not_evaluated > 0:
+        recommendations.append(f"Complete evaluation for the remaining {not_evaluated} controls.")
+    if total_non_compliant > 0:
+        recommendations.append(f"Address {total_non_compliant} non-compliant controls by uploading required evidence.")
+    if total_partial > 0:
+        recommendations.append(f"Improve {total_partial} partially compliant controls to achieve full compliance.")
+    validated_count = len([v for v in validation_store.values() if v.get("validated")])
+    overall_score = round((total_compliant + total_partial * 0.5) / total_controls * 100) if total_controls > 0 else 0
+
+    return {
+        "status": "success",
+        "report": {
+            "generated_at": report_date,
+            "company_name": req.company_name,
+            "scoped": True,
+            "sub_domain_ids": list(selected_ids),
+            "overall_score": overall_score,
+            "total_controls": total_controls,
+            "total_evaluated": total_evaluated,
+            "total_compliant": total_compliant,
+            "total_partial": total_partial,
+            "total_non_compliant": total_non_compliant,
+            "not_evaluated": not_evaluated,
+            "validated_count": validated_count,
+            "domain_results": domain_results,
+            "recommendations": recommendations,
         }
     }
 
@@ -1037,6 +1271,21 @@ async def save_validation(req: ValidationRequest):
 async def list_validations():
     """List all human validations"""
     return {"status": "success", "validations": validation_store}
+
+
+# =============================================================================
+# Reset API
+# =============================================================================
+
+@app.post("/api/reset")
+async def reset_all_data():
+    """Clear all evaluation results, validations, and evidence"""
+    global evidence_store, evaluation_results_store, validation_store
+    evaluation_results_store.clear()
+    validation_store.clear()
+    evidence_store.clear()
+    db.reset_all_data()
+    return {"status": "success", "message": "All data has been reset"}
 
 
 # =============================================================================

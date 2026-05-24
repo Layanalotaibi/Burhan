@@ -2,352 +2,527 @@ import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
-import { Shield, Download, FileDown, Loader2, ArrowLeft, CheckCircle2, AlertCircle } from "lucide-react";
+import { Download, FileDown, Loader2, ArrowLeft } from "lucide-react";
+import { BurhanNewLogo } from "./BurhanNewLogo";
 
 interface ReportPreviewProps {
   onBack: () => void;
+  initialReport?: any;
 }
 
-export function ReportPreview({ onBack }: ReportPreviewProps) {
-  const [exportFormat, setExportFormat] = useState("pdf");
+const C = {
+  navy:      "#1B2F6B",
+  teal:      "#1BB7B0",
+  tealLight: "#E6F7F7",
+  border:    "#D0D5E0",
+  bgPage:    "#F0F2F7",
+  bgAlt:     "#F8F9FF",
+  textDark:  "#1A1A2E",
+  textMid:   "#4A4A6A",
+  textLight: "#9A9AB0",
+  green:     "#2EA87E",
+  amber:     "#F59E0B",
+  red:       "#EF4444",
+  gray:      "#CBD5E1",
+};
+
+const DOT: Record<string, string> = {
+  "Compliant":     C.green,
+  "Partial":       C.amber,
+  "Non-Compliant": C.red,
+};
+
+// A4 at 96 dpi = 794 × 1123 px
+const PAGE = {
+  width: 794,
+  minHeight: 1123,
+  backgroundColor: "white",
+  boxShadow: "0 4px 24px rgba(0,0,0,0.10)",
+  border: `1px solid ${C.border}`,
+  marginBottom: 32,
+  pageBreakAfter: "always",
+  breakAfter: "page",
+  display: "flex",
+  flexDirection: "column",
+};
+
+export function ReportPreview({ onBack, initialReport }: ReportPreviewProps) {
+  const [exportFormat, setExportFormat]       = useState("pdf");
   const [showExportModal, setShowExportModal] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
-  const [exportComplete, setExportComplete] = useState(false);
-  const [report, setReport] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [isExporting, setIsExporting]         = useState(false);
+  const [report, setReport]                   = useState<any>(initialReport || null);
+  const [loading, setLoading]                 = useState(!initialReport);
 
   useEffect(() => {
+    if (initialReport) return;
     import("../services/api").then(({ generateReport }) => {
-      generateReport().then((res) => {
-        if (res.status === "success") {
-          setReport(res.report);
-        }
-        setLoading(false);
-      }).catch(() => setLoading(false));
+      generateReport()
+        .then((res) => { if (res.status === "success") setReport(res.report); setLoading(false); })
+        .catch(() => setLoading(false));
     });
-  }, []);
+  }, [initialReport]);
 
   const handleExport = () => {
     setShowExportModal(true);
     setIsExporting(true);
-    setExportComplete(false);
-    setTimeout(() => {
-      setIsExporting(false);
-      setExportComplete(true);
-    }, 2000);
+    setTimeout(() => setIsExporting(false), 2000);
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#FAF9F7" }}>
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" style={{ color: "#1B6CA8" }} />
-          <p className="text-sm text-muted-foreground">Generating report...</p>
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: C.bgPage }}>
+        <div className="text-center space-y-3">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto" style={{ color: C.teal }} />
+          <p className="text-sm" style={{ color: C.textMid }}>Generating report…</p>
         </div>
       </div>
     );
   }
 
-  const r = report || {};
+  const r          = report || {};
+  const score      = r.overall_score || 0;
+  const scoreColor = score >= 70 ? C.green : score >= 40 ? C.amber : C.red;
+  const circ       = 2 * Math.PI * 50;
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#FAF9F7" }}>
-      {/* Action Bar */}
-      <div className="bg-white border-b px-8 py-4">
+    <div className="min-h-screen" style={{ backgroundColor: C.bgPage }}>
+
+      {/* ── Action Bar ── */}
+      <div className="sticky top-0 z-10 bg-white border-b shadow-sm px-6 py-3">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <Button variant="outline" onClick={onBack} className="gap-2">
-            <ArrowLeft className="w-4 h-4" />
-            Back
+          <Button variant="outline" onClick={onBack} className="gap-2 text-sm">
+            <ArrowLeft className="w-4 h-4" /> Back
           </Button>
           <div className="flex items-center gap-3">
             <Select value={exportFormat} onValueChange={setExportFormat}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue />
-              </SelectTrigger>
+              <SelectTrigger className="w-[120px] text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="pdf">PDF</SelectItem>
                 <SelectItem value="docx">DOCX</SelectItem>
               </SelectContent>
             </Select>
-            <Button onClick={handleExport} className="gap-2" style={{ backgroundColor: "#1B6CA8" }}>
-              <Download className="w-4 h-4" />
-              Download
+            <Button onClick={handleExport} className="gap-2 text-sm text-white" style={{ backgroundColor: C.navy }}>
+              <Download className="w-4 h-4" /> Download
             </Button>
           </div>
         </div>
       </div>
 
-      {/* Report Container */}
-      <div className="py-8 px-4">
-        <div className="max-w-5xl mx-auto bg-white shadow-sm relative overflow-hidden">
-          <div className="absolute inset-0 flex items-center justify-center opacity-[0.02] pointer-events-none">
-            <Shield className="w-[600px] h-[600px]" />
+      {/* ── Pages ── */}
+      <div className="py-10 flex flex-col items-center">
+
+        {/* ══ PAGE 1: COVER ══ */}
+        <div style={PAGE}>
+
+          {/* ── Top band ── */}
+          <div className="px-12 py-8 flex items-center justify-between border-b" style={{ borderColor: C.border }}>
+            <BurhanNewLogo size="lg" />
+            <div className="text-right">
+              <p className="text-xs uppercase tracking-widest" style={{ color: C.teal }}>Generated by</p>
+              <p className="text-sm font-semibold" style={{ color: C.navy }}>Burhan</p>
+            </div>
           </div>
 
-          <div className="relative z-10 px-16 py-12">
+          {/* ── Hero ── */}
+          <div className="flex-1 flex flex-col justify-between px-12 py-10">
 
-            {/* 1. Header */}
-            <div className="border-b pb-8 mb-10" style={{ borderColor: "#E5E5E5" }}>
-              <div className="flex items-start justify-between">
-                <div className="space-y-6">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded flex items-center justify-center" style={{ backgroundColor: "#1B6CA8" }}>
-                      <Shield className="w-7 h-7 text-white" />
-                    </div>
-                    <span className="arabic-text text-3xl" style={{ color: "#1B6CA8" }}>&#1576;&#1615;&#1585;&#1607;&#1575;&#1606;</span>
-                  </div>
-                  <div className="space-y-2">
-                    <h1 className="text-2xl" style={{ color: "#1B6CA8", fontWeight: 600 }}>
-                      NCA-ECC Compliance Evaluation Report
-                    </h1>
-                    <p style={{ color: "#5A5A5A", fontSize: "14px" }}>
-                      Generated by Burhan - AI-Powered Compliance Automation Platform
-                    </p>
-                  </div>
+            {/* Title block */}
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <p className="text-xs font-bold uppercase tracking-widest" style={{ color: C.teal }}>
+                  Compliance Evaluation Report
+                </p>
+                <h1 className="text-3xl font-bold leading-tight" style={{ color: C.navy }}>
+                  NCA Essential Cybersecurity<br />Controls — 2: 2024
+                </h1>
+                <p className="text-sm" style={{ color: C.textMid }}>
+                  National Cybersecurity Authority · Kingdom of Saudi Arabia
+                </p>
+              </div>
+
+              {/* Org + Score row */}
+              <div className="flex items-stretch gap-4 pt-2">
+                {/* Org */}
+                <div className="flex-1 rounded-xl p-5"
+                     style={{ backgroundColor: C.bgAlt, border: `1px solid ${C.border}` }}>
+                  <p className="text-xs uppercase tracking-widest mb-1" style={{ color: C.teal }}>Organization</p>
+                  <p className="text-lg font-bold" style={{ color: C.navy }}>
+                    {r.company_name || "—"}
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: C.textLight }}>
+                    {r.generated_at ? new Date(r.generated_at).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" }) : "—"}
+                  </p>
                 </div>
 
-                <div className="border rounded px-6 py-4 space-y-2 min-w-[300px]" style={{ borderColor: "#E5E5E5", backgroundColor: "#FAFAFA" }}>
-                  <div className="flex justify-between text-sm">
-                    <span style={{ color: "#5A5A5A" }}>Report Date:</span>
-                    <span style={{ color: "#1B1B1B", fontWeight: 500 }}>{r.generated_at ? new Date(r.generated_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : "—"}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span style={{ color: "#5A5A5A" }}>Total Controls:</span>
-                    <span style={{ color: "#1B1B1B", fontWeight: 500 }}>{r.total_controls || 0}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span style={{ color: "#5A5A5A" }}>Evaluated:</span>
-                    <span style={{ color: "#1B1B1B", fontWeight: 500 }}>{r.total_evaluated || 0}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span style={{ color: "#5A5A5A" }}>Validated:</span>
-                    <span style={{ color: "#1B1B1B", fontWeight: 500 }}>{r.validated_count || 0}</span>
-                  </div>
+                {/* Score */}
+                <div className="rounded-xl p-5 flex flex-col items-center justify-center text-center"
+                     style={{ backgroundColor: C.bgAlt, border: `1px solid ${C.border}`, minWidth: 160 }}>
+                  <p className="text-xs uppercase tracking-widest mb-1" style={{ color: C.textLight }}>Overall Score</p>
+                  <p className="text-5xl font-bold leading-none" style={{ color: scoreColor }}>{score}%</p>
+                  <p className="text-xs mt-2 font-medium" style={{ color: C.textMid }}>
+                    {score >= 70 ? "Satisfactory" : score >= 40 ? "Needs Improvement" : "Critical"}
+                  </p>
                 </div>
+              </div>
+
+              {/* Meta strip */}
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: "Total Controls", value: r.total_controls  || 0 },
+                  { label: "Evaluated",      value: r.total_evaluated || 0 },
+                  { label: "Validated",      value: r.validated_count || 0 },
+                ].map((item, i) => (
+                  <div key={i} className="rounded-lg py-4 text-center"
+                       style={{ backgroundColor: C.bgAlt, border: `1px solid ${C.border}` }}>
+                    <p className="text-xs uppercase tracking-widest mb-1" style={{ color: C.textLight }}>{item.label}</p>
+                    <p className="text-2xl font-bold" style={{ color: C.navy }}>{item.value}</p>
+                  </div>
+                ))}
               </div>
             </div>
 
-            {/* 2. Executive Summary */}
-            <section className="mb-10">
-              <h2 className="text-xl mb-4" style={{ color: "#1B6CA8", fontWeight: 600 }}>1. Executive Summary</h2>
-              <div className="space-y-4" style={{ color: "#5A5A5A", lineHeight: "1.8" }}>
-                <p>
-                  This report provides a summary of the organization's cybersecurity compliance status with the
-                  National Cybersecurity Authority's Essential Cybersecurity Controls (NCA-ECC).
-                </p>
+            {/* Legend block */}
+            <div className="space-y-4">
+              <div className="h-px" style={{ backgroundColor: C.border }} />
 
-                <div className="grid grid-cols-2 gap-6 pt-4">
-                  {/* Overall Score */}
-                  <div className="border rounded-lg p-6 text-center" style={{ borderColor: "#E5E5E5" }}>
-                    <p className="text-sm mb-4" style={{ color: "#5A5A5A" }}>Overall Compliance</p>
-                    <div className="flex items-center justify-center h-32 relative">
-                      <svg width="120" height="120" viewBox="0 0 120 120">
-                        <circle cx="60" cy="60" r="50" fill="none" stroke="#E5E5E5" strokeWidth="12"/>
-                        <circle cx="60" cy="60" r="50" fill="none" stroke="#1B6CA8" strokeWidth="12"
-                          strokeDasharray={`${(r.overall_score || 0) / 100 * 314} 314`}
-                          transform="rotate(-90 60 60)"/>
-                      </svg>
-                      <div className="absolute text-center">
-                        <div className="text-3xl" style={{ color: "#1B6CA8", fontWeight: 600 }}>{r.overall_score || 0}%</div>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: C.navy }}>
+                  Compliance Level
+                </p>
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    { color: C.green, label: "Compliant",     desc: "Fully implemented" },
+                    { color: C.amber, label: "Partial",        desc: "Partially implemented" },
+                    { color: C.red,   label: "Non-Compliant", desc: "Not implemented" },
+                    { color: C.gray,  label: "Not Evaluated",  desc: "No evidence yet" },
+                  ].map((item) => (
+                    <div key={item.label} className="flex items-center gap-2 p-2.5 rounded-lg"
+                         style={{ backgroundColor: C.bgAlt, border: `1px solid ${C.border}` }}>
+                      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
+                      <div>
+                        <p className="text-xs font-semibold" style={{ color: C.textDark }}>{item.label}</p>
+                        <p className="text-xs leading-tight" style={{ color: C.textLight }}>{item.desc}</p>
                       </div>
                     </div>
-                  </div>
+                  ))}
+                </div>
+              </div>
 
-                  {/* Summary Stats */}
-                  <div className="border rounded-lg p-6" style={{ borderColor: "#E5E5E5" }}>
-                    <p className="text-sm mb-4" style={{ color: "#5A5A5A" }}>Compliance Breakdown</p>
-                    <div className="space-y-3">
-                      {[
-                        { label: "Compliant", value: r.total_compliant || 0, total: r.total_controls || 1, color: "#74C365" },
-                        { label: "Partial", value: r.total_partial || 0, total: r.total_controls || 1, color: "#DBE64C" },
-                        { label: "Non-Compliant", value: r.total_non_compliant || 0, total: r.total_controls || 1, color: "#ef4444" },
-                        { label: "Not Evaluated", value: r.not_evaluated || 0, total: r.total_controls || 1, color: "#d1d5db" },
-                      ].map((item, i) => (
-                        <div key={i}>
-                          <div className="flex justify-between text-xs mb-1" style={{ color: "#5A5A5A" }}>
-                            <span>{item.label}</span>
-                            <span>{item.value}</span>
-                          </div>
-                          <div className="h-2 rounded-full" style={{ backgroundColor: "#E5E5E5" }}>
-                            <div className="h-2 rounded-full" style={{
-                              backgroundColor: item.color,
-                              width: `${Math.round((item.value / item.total) * 100)}%`
-                            }}/>
-                          </div>
-                        </div>
-                      ))}
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: C.navy }}>
+                  Validation Status
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { color: C.green, label: "Validated",     desc: "Independently verified by human" },
+                    { color: C.gray,  label: "Not Validated", desc: "Pending human verification" },
+                  ].map((item) => (
+                    <div key={item.label} className="flex items-center gap-2 p-2.5 rounded-lg"
+                         style={{ backgroundColor: C.bgAlt, border: `1px solid ${C.border}` }}>
+                      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
+                      <div>
+                        <p className="text-xs font-semibold" style={{ color: C.textDark }}>{item.label}</p>
+                        <p className="text-xs leading-tight" style={{ color: C.textLight }}>{item.desc}</p>
+                      </div>
                     </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <PageFooter page={1} />
+        </div>
+
+        {/* ══ PAGE 2: EXECUTIVE SUMMARY + DOMAIN OVERVIEW ══ */}
+        <div style={PAGE}>
+          <div className="flex-1 px-12 py-10 space-y-10">
+
+            {/* 1. Executive Summary */}
+            <section>
+              <SectionHeading number="1" title="Executive Summary" />
+              <p className="text-sm mb-6" style={{ color: C.textMid, lineHeight: "1.85" }}>
+                This report presents the organization's cybersecurity compliance status against the
+                National Cybersecurity Authority's Essential Cybersecurity Controls (NCA-ECC – 2: 2024).
+                It covers governance, defense, resilience, and third-party/cloud computing domains.
+              </p>
+              <div className="grid grid-cols-2 gap-6">
+                {/* Donut */}
+                <div className="rounded-lg border p-6 text-center" style={{ borderColor: C.border }}>
+                  <p className="text-xs uppercase tracking-widest mb-4" style={{ color: C.textLight }}>Overall Compliance</p>
+                  <div className="relative inline-flex items-center justify-center">
+                    <svg width="148" height="148" viewBox="0 0 120 120">
+                      <circle cx="60" cy="60" r="50" fill="none" stroke={C.tealLight} strokeWidth="14" />
+                      <circle cx="60" cy="60" r="50" fill="none" stroke={C.teal} strokeWidth="14"
+                        strokeDasharray={`${(score / 100) * circ} ${circ}`}
+                        strokeLinecap="round"
+                        transform="rotate(-90 60 60)" />
+                    </svg>
+                    <div className="absolute text-center">
+                      <div className="text-3xl font-bold" style={{ color: C.navy }}>{score}%</div>
+                      <div className="text-xs" style={{ color: C.textLight }}>compliance</div>
+                    </div>
+                  </div>
+                </div>
+                {/* Breakdown */}
+                <div className="rounded-lg border p-6" style={{ borderColor: C.border }}>
+                  <p className="text-xs uppercase tracking-widest mb-5" style={{ color: C.textLight }}>Compliance Breakdown</p>
+                  <div className="space-y-4">
+                    {[
+                      { label: "Compliant",     value: r.total_compliant     || 0, color: C.green },
+                      { label: "Partial",       value: r.total_partial       || 0, color: C.amber },
+                      { label: "Non-Compliant", value: r.total_non_compliant || 0, color: C.red   },
+                      { label: "Not Evaluated", value: r.not_evaluated       || 0, color: C.gray  },
+                    ].map((item) => (
+                      <div key={item.label}>
+                        <div className="flex items-center justify-between text-xs mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
+                            <span style={{ color: C.textMid }}>{item.label}</span>
+                          </div>
+                          <span className="font-semibold" style={{ color: C.navy }}>{item.value}</span>
+                        </div>
+                        <div className="h-2 rounded-full" style={{ backgroundColor: "#EEF0F5" }}>
+                          <div className="h-2 rounded-full" style={{
+                            backgroundColor: item.color,
+                            width: `${Math.min(Math.round((item.value / (r.total_controls || 1)) * 100), 100)}%`,
+                          }} />
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
             </section>
 
-            {/* 3. Domain-Level Overview */}
-            <section className="mb-10">
-              <h2 className="text-xl mb-4" style={{ color: "#1B6CA8", fontWeight: 600 }}>2. Domain-Level Compliance Overview</h2>
-              <div className="border rounded-lg overflow-hidden" style={{ borderColor: "#E5E5E5" }}>
-                <table className="w-full">
+            {/* 2. Domain-Level Overview */}
+            <section>
+              <SectionHeading number="2" title="Domain-Level Compliance Overview" />
+              <div className="overflow-hidden rounded-lg border" style={{ borderColor: C.border }}>
+                <table className="w-full text-sm">
                   <thead>
-                    <tr style={{ backgroundColor: "#F9F9F9", borderBottom: "1px solid #E5E5E5" }}>
-                      <th className="text-left px-4 py-3 text-sm" style={{ color: "#1B1B1B", fontWeight: 600 }}>Domain</th>
-                      <th className="text-left px-4 py-3 text-sm" style={{ color: "#1B1B1B", fontWeight: 600 }}>Compliance</th>
-                      <th className="text-left px-4 py-3 text-sm" style={{ color: "#1B1B1B", fontWeight: 600 }}>Evaluated</th>
-                      <th className="text-left px-4 py-3 text-sm" style={{ color: "#1B1B1B", fontWeight: 600 }}>Status</th>
+                    <tr style={{ backgroundColor: C.navy }}>
+                      {["Domain", "Compliance Score", "Evaluated / Total", "Status"].map((h, i) => (
+                        <th key={h} className={`px-4 py-3 font-semibold text-xs uppercase tracking-wider text-white ${i === 2 ? "text-center" : "text-left"}`}>{h}</th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {(r.domain_results || []).length > 0 ? (r.domain_results || []).map((d: any, i: number) => (
-                      <tr key={i} style={{ borderBottom: "1px solid #E5E5E5" }}>
-                        <td className="px-4 py-3 text-sm" style={{ color: "#1B1B1B" }}>{d.name}</td>
-                        <td className="px-4 py-3 text-sm" style={{ color: "#1B1B1B", fontWeight: 500 }}>{d.progress}%</td>
-                        <td className="px-4 py-3 text-sm" style={{ color: "#5A5A5A" }}>{d.evaluated} / {d.total_controls}</td>
-                        <td className="px-4 py-3 text-sm" style={{ color: "#5A5A5A" }}>{d.status}</td>
-                      </tr>
-                    )) : (
-                      <tr><td colSpan={4} className="px-4 py-6 text-sm text-center" style={{ color: "#5A5A5A" }}>No data available</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-
-            {/* 4. Control-Level Findings */}
-            <section className="mb-10">
-              <h2 className="text-xl mb-4" style={{ color: "#1B6CA8", fontWeight: 600 }}>3. Control-Level Findings</h2>
-              <div className="border rounded-lg overflow-hidden" style={{ borderColor: "#E5E5E5" }}>
-                <table className="w-full">
-                  <thead>
-                    <tr style={{ backgroundColor: "#F9F9F9", borderBottom: "1px solid #E5E5E5" }}>
-                      <th className="text-left px-4 py-3 text-sm" style={{ color: "#1B1B1B", fontWeight: 600 }}>Control ID</th>
-                      <th className="text-left px-4 py-3 text-sm" style={{ color: "#1B1B1B", fontWeight: 600 }}>Name</th>
-                      <th className="text-left px-4 py-3 text-sm" style={{ color: "#1B1B1B", fontWeight: 600 }}>Status</th>
-                      <th className="text-left px-4 py-3 text-sm" style={{ color: "#1B1B1B", fontWeight: 600 }}>Evidence</th>
-                      <th className="text-left px-4 py-3 text-sm" style={{ color: "#1B1B1B", fontWeight: 600 }}>Validated</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(r.domain_results || []).flatMap((d: any) => d.control_findings || []).length > 0
-                      ? (r.domain_results || []).flatMap((d: any) =>
-                          (d.control_findings || []).map((f: any, i: number) => (
-                            <tr key={`${f.control_id}-${i}`} style={{ borderBottom: "1px solid #E5E5E5" }}>
-                              <td className="px-4 py-3 text-sm" style={{ color: "#1B6CA8", fontWeight: 500 }}>{f.control_id}</td>
-                              <td className="px-4 py-3 text-sm" style={{ color: "#1B1B1B" }}>{f.name}</td>
-                              <td className="px-4 py-3 text-sm">
-                                <span className={`px-2 py-0.5 rounded text-xs ${
-                                  f.status === "Compliant" ? "bg-green-100 text-green-700" :
-                                  f.status === "Partial" ? "bg-amber-100 text-amber-700" :
-                                  "bg-red-100 text-red-700"
-                                }`}>{f.status}</span>
-                              </td>
-                              <td className="px-4 py-3 text-sm" style={{ color: "#5A5A5A" }}>{f.evidence_files?.join(", ") || "—"}</td>
-                              <td className="px-4 py-3 text-sm">
-                                {f.validated ? (
-                                  <span className="flex items-center gap-1 text-green-600 text-xs">
-                                    <CheckCircle2 className="w-3 h-3" /> {f.validator}
-                                  </span>
-                                ) : (
-                                  <span className="text-xs text-gray-400">—</span>
-                                )}
-                              </td>
-                            </tr>
-                          ))
-                        )
-                      : (
-                        <tr><td colSpan={5} className="px-4 py-6 text-sm text-center" style={{ color: "#5A5A5A" }}>No evaluations completed yet</td></tr>
-                      )
+                    {(r.domain_results || []).length > 0
+                      ? (r.domain_results || []).map((d: any, i: number) => (
+                          <tr key={i} style={{ backgroundColor: i % 2 === 0 ? "#FFFFFF" : C.bgAlt, borderBottom: `1px solid ${C.border}` }}>
+                            <td className="px-4 py-3 font-medium" style={{ color: C.textDark }}>{d.name}</td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <div className="h-2 w-28 rounded-full" style={{ backgroundColor: "#EEF0F5" }}>
+                                  <div className="h-2 rounded-full" style={{ backgroundColor: C.teal, width: `${d.progress}%` }} />
+                                </div>
+                                <span className="text-xs font-bold" style={{ color: C.navy }}>{d.progress}%</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-center" style={{ color: C.textMid }}>{d.evaluated} / {d.total_controls}</td>
+                            <td className="px-4 py-3">
+                              <div className="flex justify-center">
+                                <div className="w-4 h-4 rounded-full" style={{ backgroundColor: DOT[d.status] || C.gray }} title={d.status || "Not Evaluated"} />
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      : <tr><td colSpan={4} className="px-4 py-8 text-center text-sm" style={{ color: C.textLight }}>No data available</td></tr>
                     }
                   </tbody>
                 </table>
               </div>
             </section>
 
-            {/* 5. Recommendations */}
+          </div>
+          <PageFooter page={2} />
+        </div>
+
+        {/* ══ PAGE 3: CONTROL-LEVEL FINDINGS ══ */}
+        <div style={PAGE}>
+          <div className="flex-1 px-12 py-10">
+            <section>
+              <SectionHeading number="3" title="Control-Level Findings" />
+              <div className="overflow-hidden rounded-lg border" style={{ borderColor: C.border }}>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr style={{ backgroundColor: C.navy }}>
+                      {["Control ID", "Name", "Compliance Level", "Validated"].map((h) => (
+                        <th key={h} className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-white">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      const rows: any[] = [];
+                      (r.domain_results || []).forEach((d: any) => {
+                        const findings = d.control_findings || [];
+                        if (!findings.length) return;
+                        rows.push(
+                          <tr key={`dh-${d.name}`} style={{ backgroundColor: C.teal }}>
+                            <td colSpan={4} className="px-4 py-2 text-white font-semibold text-xs tracking-wide">{d.name}</td>
+                          </tr>
+                        );
+                        findings.forEach((f: any, i: number) => {
+                          rows.push(
+                            <tr key={`${f.control_id}-${i}`} style={{ backgroundColor: i % 2 === 0 ? "#FFFFFF" : C.bgAlt, borderBottom: `1px solid ${C.border}` }}>
+                              <td className="px-4 py-3 font-mono font-bold text-xs" style={{ color: C.teal }}>{f.control_id}</td>
+                              <td className="px-4 py-3" style={{ color: C.textDark }}>{f.name}</td>
+                              <td className="px-4 py-3">
+                                <div className="flex justify-center">
+                                  <div className="w-4 h-4 rounded-full" style={{ backgroundColor: DOT[f.status] || C.gray }} title={f.status || "Not Evaluated"} />
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex justify-center">
+                                  <div className="w-4 h-4 rounded-full"
+                                       style={{ backgroundColor: f.validated ? C.green : C.gray }}
+                                       title={f.validated ? "Validated" : "Not validated"} />
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        });
+                      });
+                      if (!rows.length) {
+                        return (
+                          <tr>
+                            <td colSpan={4} className="px-4 py-8 text-center text-sm" style={{ color: C.textLight }}>
+                              No evaluations completed yet
+                            </td>
+                          </tr>
+                        );
+                      }
+                      return rows;
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+          <PageFooter page={3} />
+        </div>
+
+        {/* ══ PAGE 4: RECOMMENDATIONS + CONCLUSION + VERIFICATION ══ */}
+        <div style={PAGE}>
+          <div className="flex-1 px-12 py-10 flex flex-col">
+
+            {/* 4. Recommendations */}
             <section className="mb-10">
-              <h2 className="text-xl mb-4" style={{ color: "#1B6CA8", fontWeight: 600 }}>4. Recommendations</h2>
-              <div className="space-y-3">
-                {(r.recommendations || []).length > 0
-                  ? (r.recommendations || []).map((rec: string, i: number) => (
+              <SectionHeading number="4" title="Recommendations" />
+              {(r.recommendations || []).length > 0
+                ? <div className="space-y-3">
+                    {(r.recommendations || []).map((rec: string, i: number) => (
                       <div key={i} className="flex gap-3">
-                        <span style={{ color: "#1B6CA8", fontWeight: 600 }}>{i + 1}.</span>
-                        <p style={{ color: "#5A5A5A", lineHeight: "1.8" }}>{rec}</p>
+                        <span className="text-sm font-semibold flex-shrink-0" style={{ color: C.navy }}>{i + 1}.</span>
+                        <p className="text-sm" style={{ color: C.textDark, lineHeight: "1.75" }}>{rec}</p>
                       </div>
-                    ))
-                  : <p style={{ color: "#5A5A5A" }}>No recommendations at this time.</p>
-                }
-              </div>
-            </section>
-
-            {/* 6. Conclusion */}
-            <section className="mb-10">
-              <h2 className="text-xl mb-4" style={{ color: "#1B6CA8", fontWeight: 600 }}>5. Conclusion</h2>
-              <p style={{ color: "#5A5A5A", lineHeight: "1.8" }}>
-                {r.total_evaluated > 0
-                  ? `Out of ${r.total_controls} controls, ${r.total_evaluated} have been evaluated with an overall compliance score of ${r.overall_score}%. ${r.validated_count} controls have been validated by auditors. Regular assessments are recommended to maintain continuous compliance readiness.`
-                  : "No evaluations have been completed yet. Start by uploading evidence for controls in the Evidence Compliance Management tab."
-                }
-              </p>
-            </section>
-
-            {/* 7. Verification */}
-            <section className="mb-10">
-              <h2 className="text-xl mb-6" style={{ color: "#1B6CA8", fontWeight: 600 }}>Verification and Approval</h2>
-              <div className="border-2 rounded-lg p-8 text-center mb-8" style={{ borderColor: "#1B6CA8" }}>
-                <div className="flex justify-center mb-4">
-                  <div className="w-20 h-20 rounded-full border-4 flex items-center justify-center" style={{ borderColor: "#1B6CA8" }}>
-                    <Shield className="w-10 h-10" style={{ color: "#1B6CA8" }} />
+                    ))}
                   </div>
-                </div>
-                <p className="text-base mb-1" style={{ color: "#1B6CA8", fontWeight: 600 }}>
-                  Official Verification Seal - Burhan AI Engine
-                </p>
-                <p className="text-sm" style={{ color: "#5A5A5A" }}>Digitally Generated Compliance Report</p>
-              </div>
-              <div className="grid grid-cols-2 gap-8">
-                <div>
-                  <p className="text-sm mb-2" style={{ color: "#5A5A5A" }}>Authorized Auditor Signature:</p>
-                  <div className="border-b-2" style={{ borderColor: "#1B1B1B" }}><span style={{ color: "transparent" }}>_</span></div>
-                </div>
-                <div>
-                  <p className="text-sm mb-2" style={{ color: "#5A5A5A" }}>Date:</p>
-                  <div className="border-b-2" style={{ borderColor: "#1B1B1B" }}><span style={{ color: "transparent" }}>_</span></div>
-                </div>
+                : <p className="text-sm" style={{ color: C.textMid }}>No recommendations at this time.</p>
+              }
+            </section>
+
+            {/* 5. Conclusion */}
+            <section className="mb-10">
+              <SectionHeading number="5" title="Conclusion" />
+              <p className="text-sm" style={{ color: C.textDark, lineHeight: "1.9" }}>
+                {r.total_evaluated > 0
+                  ? `Out of ${r.total_controls} controls, ${r.total_evaluated} have been evaluated with an overall compliance score of ${score}%.${r.validated_count > 0 ? ` ${r.validated_count} controls have been independently validated.` : ""} Continued assessment and remediation efforts are recommended to maintain and improve compliance with NCA-ECC requirements.`
+                  : "No evaluations have been completed yet. Begin by uploading evidence for controls in the Evidence Compliance Management tab."
+                }
+              </p>
+            </section>
+
+            {/* Verification — pinned to bottom */}
+            <section style={{ marginTop: "auto" }}>
+              <SectionHeading number="" title="Verification and Approval" />
+              <div className="grid grid-cols-3 gap-10 pt-2">
+                {["Authorized Auditor Signature", "Organization Stamp", "Date"].map((label) => (
+                  <div key={label}>
+                    <div className="h-16 mb-3 rounded" style={{ border: `1px dashed ${C.border}` }} />
+                    <p className="text-xs" style={{ color: C.textMid }}>{label}</p>
+                  </div>
+                ))}
               </div>
             </section>
 
-            {/* Footer */}
-            <div className="border-t pt-6 text-center" style={{ borderColor: "#E5E5E5" }}>
-              <p className="text-sm" style={{ color: "#5A5A5A" }}>
-                Burhan - AI-Powered Compliance for NCA-ECC | Confidential Report for Internal Use Only
-              </p>
+          </div>
+
+          {/* Full footer on last page */}
+          <div>
+            <div className="h-1.5" style={{ backgroundColor: C.teal }} />
+            <div className="px-12 py-4 flex items-center justify-between"
+                 style={{ backgroundColor: C.bgAlt, borderTop: `1px solid ${C.border}` }}>
+              <div className="flex items-center gap-2">
+                <BurhanNewLogo size="sm" />
+                <span className="text-xs font-semibold" style={{ color: C.navy }}>Burhan</span>
+                <span className="text-xs" style={{ color: C.textLight }}>— AI-Powered Compliance for NCA-ECC</span>
+              </div>
+              <span className="text-xs" style={{ color: C.textLight }}>Confidential · For Internal Use Only</span>
             </div>
           </div>
         </div>
+
       </div>
 
       {/* Export Modal */}
       <Dialog open={showExportModal} onOpenChange={setShowExportModal}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{isExporting ? "Exporting Report..." : "Export Complete"}</DialogTitle>
+            <DialogTitle>{isExporting ? "Exporting Report…" : "Export Complete"}</DialogTitle>
             <DialogDescription>
-              {isExporting ? `Generating your ${exportFormat.toUpperCase()} report...` : `Report successfully exported as ${exportFormat.toUpperCase()}.`}
+              {isExporting ? `Generating your ${exportFormat.toUpperCase()} report…` : `Report exported as ${exportFormat.toUpperCase()}.`}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col items-center justify-center py-8">
-            {isExporting ? (
-              <Loader2 className="w-12 h-12 animate-spin" style={{ color: "#1B6CA8" }} />
-            ) : (
-              <div className="space-y-4 text-center">
-                <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto" style={{ backgroundColor: "#E8F5E9" }}>
-                  <FileDown className="w-8 h-8" style={{ color: "#2E7D32" }} />
+            {isExporting
+              ? <Loader2 className="w-12 h-12 animate-spin" style={{ color: C.teal }} />
+              : (
+                <div className="space-y-4 text-center">
+                  <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto" style={{ backgroundColor: C.tealLight }}>
+                    <FileDown className="w-8 h-8" style={{ color: C.teal }} />
+                  </div>
+                  <p className="text-sm" style={{ color: C.textMid }}>Your report has been downloaded.</p>
+                  <Button onClick={() => setShowExportModal(false)} className="text-white" style={{ backgroundColor: C.navy }}>Close</Button>
                 </div>
-                <p className="text-sm" style={{ color: "#5A5A5A" }}>Your report has been downloaded to your device.</p>
-                <Button onClick={() => setShowExportModal(false)} className="mt-4" style={{ backgroundColor: "#1B6CA8" }}>Close</Button>
-              </div>
-            )}
+              )
+            }
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/* ── Helpers ── */
+
+function SectionHeading({ number, title }: { number: string; title: string }) {
+  return (
+    <div className="flex items-center gap-3 mb-6">
+      <div className="w-1 h-6 rounded-full flex-shrink-0" style={{ backgroundColor: C.teal }} />
+      {number && (
+        <span className="text-xs font-extrabold uppercase tracking-widest" style={{ color: C.teal }}>{number}.</span>
+      )}
+      <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: C.navy }}>{title}</h2>
+      <div className="flex-1 h-px" style={{ backgroundColor: `${C.teal}30` }} />
+    </div>
+  );
+}
+
+function PageFooter({ page }: { page: number }) {
+  return (
+    <div>
+      <div className="h-0.5" style={{ backgroundColor: C.teal }} />
+      <div className="px-12 py-2.5 flex items-center justify-between"
+           style={{ backgroundColor: C.bgAlt, borderTop: `1px solid ${C.border}` }}>
+        <div className="flex items-center gap-2">
+          <BurhanNewLogo size="sm" />
+          <span className="text-xs font-semibold" style={{ color: C.navy }}>Burhan</span>
+        </div>
+        <span className="text-xs" style={{ color: C.textLight }}>Page {page}</span>
+      </div>
     </div>
   );
 }

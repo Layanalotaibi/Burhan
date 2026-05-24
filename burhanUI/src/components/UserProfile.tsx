@@ -7,14 +7,78 @@ import { Separator } from "./ui/separator";
 import { Badge } from "./ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
-import { User, Building2, Shield, Users, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { User, Building2, Shield, Users, Trash2, RotateCcw } from "lucide-react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner@2.0.3";
 
 const organizationUsers: { id: string; name: string; email: string; role: string; status: string }[] = [];
 
 export function UserProfile() {
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [showResetDialog, setShowResetDialog] = useState(false);
+  const [resetting, setResetting] = useState(false);
+
+  // Profile state
+  const [profileName, setProfileName] = useState("");
+  const [profileEmail, setProfileEmail] = useState("admin@burhan.sa");
+
+  // Org settings state
+  const [orgName, setOrgName] = useState("");
+  const [industry, setIndustry] = useState("financial");
+  const [orgSize, setOrgSize] = useState("medium");
+  const [country, setCountry] = useState("sa");
+
+  useEffect(() => {
+    import("../services/api").then(({ getUserProfile, getOrgSettings }) => {
+      getUserProfile().then((res: any) => {
+        if (res.status === "success") {
+          setProfileName(res.user.name || "");
+          setProfileEmail(res.user.email || "");
+        }
+      });
+      getOrgSettings().then((res: any) => {
+        if (res.status === "success") {
+          setOrgName(res.settings.company_name || "");
+          setIndustry(res.settings.industry || "financial");
+          setOrgSize(res.settings.org_size || "medium");
+          setCountry(res.settings.country || "sa");
+        }
+      });
+    });
+  }, []);
+
+  const handleUpdateProfile = async () => {
+    const { updateUserProfile } = await import("../services/api");
+    const res = await updateUserProfile({ name: profileName, email: profileEmail });
+    if (res.status === "success") toast.success("Profile updated successfully.");
+    else toast.error("Failed to update profile.");
+  };
+
+  const handleSaveOrgSettings = async () => {
+    const { updateOrgSettings } = await import("../services/api");
+    const res = await updateOrgSettings({ company_name: orgName, industry, org_size: orgSize, country });
+    if (res.status === "success") toast.success("Organization settings saved.");
+    else toast.error("Failed to save settings.");
+  };
+
+  const handleReset = async () => {
+    setResetting(true);
+    try {
+      const { resetAllData } = await import("../services/api");
+      const res = await resetAllData();
+      if (res.status === "success") {
+        toast.success("All data has been reset. Reloading…");
+        setTimeout(() => window.location.reload(), 1200);
+      } else {
+        toast.error("Reset failed. Please try again.");
+        setResetting(false);
+      }
+      setShowResetDialog(false);
+    } catch {
+      toast.error("Failed to connect to server.");
+      setResetting(false);
+    }
+  };
   const [inviteName, setInviteName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("auditor");
@@ -67,12 +131,12 @@ export function UserProfile() {
 
             <div className="space-y-2">
               <Label htmlFor="fullName">Full Name</Label>
-              <Input id="fullName" defaultValue="" />
+              <Input id="fullName" value={profileName} onChange={(e) => setProfileName(e.target.value)} />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="email">Email Address</Label>
-              <Input id="email" type="email" defaultValue="" />
+              <Input id="email" type="email" value={profileEmail} onChange={(e) => setProfileEmail(e.target.value)} />
             </div>
 
             <div className="space-y-2">
@@ -96,7 +160,7 @@ export function UserProfile() {
               <Input id="phone" type="tel" defaultValue="" />
             </div>
 
-            <Button className="w-full">Update Profile</Button>
+            <Button className="w-full" onClick={handleUpdateProfile}>Update Profile</Button>
           </CardContent>
         </Card>
 
@@ -114,12 +178,12 @@ export function UserProfile() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="orgName">Organization Name</Label>
-              <Input id="orgName" defaultValue="" />
+              <Input id="orgName" value={orgName} onChange={(e) => setOrgName(e.target.value)} />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="industry">Industry</Label>
-              <Select defaultValue="financial">
+              <Select value={industry} onValueChange={setIndustry}>
                 <SelectTrigger id="industry">
                   <SelectValue />
                 </SelectTrigger>
@@ -136,7 +200,7 @@ export function UserProfile() {
 
             <div className="space-y-2">
               <Label htmlFor="orgSize">Organization Size</Label>
-              <Select defaultValue="medium">
+              <Select value={orgSize} onValueChange={setOrgSize}>
                 <SelectTrigger id="orgSize">
                   <SelectValue />
                 </SelectTrigger>
@@ -151,7 +215,7 @@ export function UserProfile() {
 
             <div className="space-y-2">
               <Label htmlFor="country">Country</Label>
-              <Select defaultValue="sa">
+              <Select value={country} onValueChange={setCountry}>
                 <SelectTrigger id="country">
                   <SelectValue />
                 </SelectTrigger>
@@ -165,12 +229,7 @@ export function UserProfile() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="licenseKey">NCA License Key</Label>
-              <Input id="licenseKey" defaultValue="NCA-2025-XXXX-XXXX" />
-            </div>
-
-            <Button className="w-full">Save Settings</Button>
+            <Button className="w-full" onClick={handleSaveOrgSettings}>Save Settings</Button>
           </CardContent>
         </Card>
       </div>
@@ -285,6 +344,62 @@ export function UserProfile() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Evaluation Reset */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <RotateCcw className="w-5 h-5" />
+            Evaluation Management
+          </CardTitle>
+          <CardDescription>
+            Start a fresh evaluation cycle by clearing all current data
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div>
+              <h4 className="text-sm font-medium">Start New Evaluation</h4>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                This will permanently delete all evaluation results, validations, and evidence records.
+              </p>
+            </div>
+            <Button variant="outline" onClick={() => setShowResetDialog(true)}>
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Start New Evaluation
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Reset Confirmation Dialog */}
+      <Dialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Start New Evaluation?</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. All evaluation results, human validations, and uploaded evidence will be permanently deleted.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-3 mt-4">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setShowResetDialog(false)}
+              disabled={resetting}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={handleReset}
+              disabled={resetting}
+            >
+              {resetting ? "Resetting…" : "Yes, Reset Everything"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Add User Modal */}
       <Dialog open={inviteModalOpen} onOpenChange={setInviteModalOpen}>

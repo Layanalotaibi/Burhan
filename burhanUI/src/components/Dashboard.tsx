@@ -17,11 +17,12 @@ import { ScrollArea } from "./ui/scroll-area";
 
 interface DashboardProps {
   onGenerateReport?: () => void;
+  onBuildReport?: () => void;
   userName?: string;
   onNavigateToControl?: (controlId: string) => void;
 }
 
-export function Dashboard({ onGenerateReport, userName = "", onNavigateToControl }: DashboardProps) {
+export function Dashboard({ onGenerateReport, onBuildReport, userName = "", onNavigateToControl }: DashboardProps) {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -149,12 +150,20 @@ export function Dashboard({ onGenerateReport, userName = "", onNavigateToControl
             <CalendarClock className="w-4 h-4" />
             <span>Last Updated: {lastUpdated}</span>
           </div>
-          {onGenerateReport && (
-            <Button onClick={onGenerateReport} className="gap-2">
-              <FileText className="w-4 h-4" />
-              Generate Report
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {onBuildReport && (
+              <Button variant="outline" onClick={onBuildReport} className="gap-2">
+                <FileText className="w-4 h-4" />
+                Custom Report
+              </Button>
+            )}
+            {onGenerateReport && (
+              <Button onClick={onGenerateReport} className="gap-2">
+                <FileText className="w-4 h-4" />
+                Full Report
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 

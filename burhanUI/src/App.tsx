@@ -6,6 +6,7 @@ import { ControlComplianceNew } from "./components/ControlComplianceNew";
 import { UserProfile } from "./components/UserProfile";
 import { HelpSupport } from "./components/HelpSupport";
 import { ReportPreview } from "./components/ReportPreview";
+import { ReportBuilder } from "./components/ReportBuilder";
 import { TopNavHeader } from "./components/TopNavHeader";
 import { Toaster } from "./components/ui/sonner";
 
@@ -16,6 +17,9 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>("dashboard");
   const [showReportPreview, setShowReportPreview] = useState(false);
+  const [showReportBuilder, setShowReportBuilder] = useState(false);
+  const [scopedReport, setScopedReport] = useState<any>(null);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
   const [selectedControlId, setSelectedControlId] = useState<string | null>(null);
@@ -53,13 +57,38 @@ export default function App() {
   }
 
   if (showReportPreview) {
-    return <ReportPreview onBack={() => setShowReportPreview(false)} />;
+    return (
+      <ReportPreview
+        onBack={() => { setShowReportPreview(false); setScopedReport(null); }}
+        initialReport={scopedReport}
+      />
+    );
+  }
+
+  if (showReportBuilder) {
+    return (
+      <ReportBuilder
+        onBack={() => setShowReportBuilder(false)}
+        isGenerating={isGeneratingReport}
+        onGenerate={async (subDomainIds, companyName) => {
+          setIsGeneratingReport(true);
+          const { generateScopedReport } = await import("./services/api");
+          const res = await generateScopedReport(subDomainIds, companyName);
+          setIsGeneratingReport(false);
+          if (res.status === "success") {
+            setScopedReport(res.report);
+            setShowReportBuilder(false);
+            setShowReportPreview(true);
+          }
+        }}
+      />
+    );
   }
 
   const renderContent = () => {
     switch (activeTab) {
       case "dashboard":
-        return <Dashboard onGenerateReport={() => setShowReportPreview(true)} userName={userName} onNavigateToControl={handleNavigateToControl} />;
+        return <Dashboard onGenerateReport={() => setShowReportPreview(true)} onBuildReport={() => setShowReportBuilder(true)} userName={userName} onNavigateToControl={handleNavigateToControl} />;
       case "compliance":
         return <ControlComplianceNew selectedControlId={selectedControlId} onClearSelection={() => setSelectedControlId(null)} userName={userName} />;
       case "profile":
@@ -67,7 +96,7 @@ export default function App() {
       case "help":
         return <HelpSupport />;
       default:
-        return <Dashboard onGenerateReport={() => setShowReportPreview(true)} userName={userName} onNavigateToControl={handleNavigateToControl} />;
+        return <Dashboard onGenerateReport={() => setShowReportPreview(true)} onBuildReport={() => setShowReportBuilder(true)} userName={userName} onNavigateToControl={handleNavigateToControl} />;
     }
   };
 

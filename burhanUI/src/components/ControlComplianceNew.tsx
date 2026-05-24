@@ -33,6 +33,8 @@ import {
   Lock,
   RefreshCw,
   Cloud,
+  Trash2,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner@2.0.3";
 import { Checkbox } from "./ui/checkbox";
@@ -99,6 +101,7 @@ export function ControlComplianceNew({
   const [detailsData, setDetailsData] = useState<any>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [validationNotes, setValidationNotes] = useState("");
+  const [editingValidation, setEditingValidation] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [evaluating, setEvaluating] = useState(false);
   const [evaluatingControlId, setEvaluatingControlId] = useState<string | null>(null);
@@ -229,12 +232,40 @@ export function ControlComplianceNew({
     }
   };
 
+  const handleDeleteEvidence = async (evidenceId: string) => {
+    try {
+      const { deleteEvidence } = await import("../services/api");
+      await deleteEvidence(evidenceId);
+      setDetailsData((prev: any) => ({
+        ...prev,
+        evidence: prev.evidence.filter((e: any) => e.id !== evidenceId),
+      }));
+      toast.success("Evidence deleted");
+    } catch {
+      toast.error("Could not delete evidence");
+    }
+  };
+
   const handleEvaluateControl = async (control: Control) => {
     setSelectedControl(control);
     setUploadDialogOpen(true);
   };
 
   const hasEvidence = (controlId: string) => controlsWithEvidence.includes(controlId);
+
+  const isSubDomainFullyEvaluated = (sd: SubDomain) => {
+    return sd.controls.every(ctrl => {
+      const scs = ctrl.sub_controls || [];
+      if (scs.length > 0) {
+        return scs.every(sc => evaluationResults[sc.sub_control_id]);
+      }
+      return evaluationResults[ctrl.control_id];
+    });
+  };
+
+  const isDomainFullyEvaluated = (domain: Domain) => {
+    return domain.sub_domains.every(sd => isSubDomainFullyEvaluated(sd));
+  };
 
   const getControlStatus = (controlId: string) => {
     const result = evaluationResults[controlId];
@@ -298,8 +329,11 @@ export function ControlComplianceNew({
               <div className="w-8 h-8 rounded-lg bg-[#001F3F] flex items-center justify-center text-white">
                 {domainIcons[domain.domain_id] || <Shield className="w-5 h-5" />}
               </div>
-              <div>
+              <div className="flex items-center gap-2">
                 <span className="text-[#001F3F]">{domain.name}</span>
+                {isDomainFullyEvaluated(domain) && (
+                  <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                )}
                 <p className="text-xs text-muted-foreground font-normal mt-0.5">
                   {domain.sub_domains.length} sub-domains · {domain.sub_domains.reduce((sum, sd) => sum + sd.controls.length, 0)} controls
                 </p>
@@ -315,6 +349,9 @@ export function ControlComplianceNew({
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium">{sd.sub_domain_id.replace("SD", "")}</span>
                         <span className="text-sm">{sd.name}</span>
+                        {isSubDomainFullyEvaluated(sd) && (
+                          <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                        )}
                       </div>
                       <Badge variant="outline" className="text-xs">
                         {sd.controls.length} controls
@@ -447,7 +484,7 @@ export function ControlComplianceNew({
                                       <Button
                                         variant="ghost"
                                         size="sm"
-                                        onClick={() => setSelectedControl({
+                                        onClick={() => openDetails({
                                           ...ctrl,
                                           control_id: sc.sub_control_id,
                                           name: sc.name,
@@ -495,7 +532,7 @@ export function ControlComplianceNew({
 
       {/* Upload & Evaluate Dialog */}
       <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="w-[90vw] max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Control {selectedControl?.control_id}</DialogTitle>
             <p className="text-sm text-muted-foreground">{selectedControl?.name}</p>
@@ -597,8 +634,8 @@ export function ControlComplianceNew({
       </Dialog>
 
       {/* Control Details Dialog (Eye icon) */}
-      <Dialog open={detailsDialogOpen} onOpenChange={(open) => { if (!open) { setDetailsDialogOpen(false); setDetailsData(null); setSelectedControl(null); } }}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+      <Dialog open={detailsDialogOpen} onOpenChange={(open) => { if (!open) { setDetailsDialogOpen(false); setDetailsData(null); setSelectedControl(null); setEditingValidation(false); } }}>
+        <DialogContent className="w-[90vw] max-w-5xl max-h-[90vh] overflow-y-auto">
           {selectedControl && (
             <>
               <DialogHeader>
@@ -620,6 +657,13 @@ export function ControlComplianceNew({
                             <FileText className="w-4 h-4 text-[#001F3F]" />
                             <span className="flex-1 truncate">{e.file_name}</span>
                             <span className="text-xs text-gray-400">{e.upload_date?.split("T")[0]}</span>
+                            <button
+                              onClick={() => handleDeleteEvidence(e.id)}
+                              className="text-gray-400 hover:text-red-500 transition-colors"
+                              title="Delete evidence"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
                         ))}
                       </div>
@@ -668,7 +712,7 @@ export function ControlComplianceNew({
                   <div className="space-y-3 border-t pt-4">
                     <h4 className="text-sm font-medium">Human Validation</h4>
 
-                    {detailsData?.validation?.validated ? (
+                    {detailsData?.validation?.validated && !editingValidation ? (
                       <div className="p-3 bg-green-50 border border-green-200 rounded-lg space-y-2">
                         <div className="flex items-center gap-2">
                           <CheckCircle2 className="w-4 h-4 text-green-600" />
@@ -679,14 +723,25 @@ export function ControlComplianceNew({
                         {detailsData.validation.notes && (
                           <p className="text-xs text-gray-600">Notes: {detailsData.validation.notes}</p>
                         )}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-xs mt-2"
-                          onClick={() => handleValidation(false)}
-                        >
-                          Remove Validation
-                        </Button>
+                        <div className="flex gap-2 mt-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs gap-1"
+                            onClick={() => { setEditingValidation(true); setValidationNotes(detailsData.validation.notes || ""); }}
+                          >
+                            <Pencil className="w-3 h-3" />
+                            Edit
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs"
+                            onClick={() => handleValidation(false)}
+                          >
+                            Remove Validation
+                          </Button>
+                        </div>
                       </div>
                     ) : (
                       <div className="space-y-3">
@@ -703,11 +758,17 @@ export function ControlComplianceNew({
                         <div className="flex items-center gap-2">
                           <Checkbox
                             id="validate-control"
-                            onCheckedChange={(checked) => handleValidation(!!checked)}
+                            checked={editingValidation || undefined}
+                            onCheckedChange={(checked) => { handleValidation(!!checked); setEditingValidation(false); }}
                           />
                           <Label htmlFor="validate-control" className="text-sm cursor-pointer">
                             Mark as validated
                           </Label>
+                          {editingValidation && (
+                            <Button variant="ghost" size="sm" className="text-xs ml-auto" onClick={() => setEditingValidation(false)}>
+                              Cancel
+                            </Button>
+                          )}
                         </div>
                       </div>
                     )}

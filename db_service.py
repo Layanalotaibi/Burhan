@@ -370,6 +370,18 @@ class DatabaseService:
             })
         return result
 
+    def reset_all_data(self):
+        """Delete all evaluation results, validations, and evidence from the database"""
+        conn = self._get_connection()
+        conn.executescript("""
+            DELETE FROM EvaluationResults;
+            DELETE FROM Validations;
+            DELETE FROM Evidence;
+            DELETE FROM Deliverables;
+        """)
+        conn.commit()
+        conn.close()
+
 
 # Singleton instance
 db = DatabaseService()
