@@ -164,6 +164,83 @@ def get_model_name():
     return "openai/gpt-5-nano"
 
 
+async def generate_llm_recommendations(
+    company_name: str,
+    total_controls: int,
+    total_evaluated: int,
+    total_compliant: int,
+    total_partial: int,
+    total_non_compliant: int,
+    not_evaluated: int,
+    overall_score: int,
+    domain_results: list,
+) -> list:
+    """Use the LLM to generate customized compliance recommendations."""
+    client = get_llm_client()
+    if not client:
+        # Fallback to static recommendations if no LLM configured
+        recs = []
+        if not_evaluated > 0:
+            recs.append(f"Complete evaluation for the remaining {not_evaluated} controls.")
+        if total_non_compliant > 0:
+            recs.append(f"Address {total_non_compliant} non-compliant controls by uploading required evidence.")
+        if total_partial > 0:
+            recs.append(f"Improve {total_partial} partially compliant controls to achieve full compliance.")
+        return recs
+
+    model_name = get_model_name()
+
+    weak_domains = [
+        f"- {d['name']}: {d['progress']}% compliant ({d['compliant']}/{d['total_controls']} controls)"
+        for d in domain_results
+        if d["progress"] < 80
+    ]
+    weak_domains_text = "\n".join(weak_domains) if weak_domains else "None"
+
+    prompt = f"""You are a cybersecurity compliance advisor specializing in Saudi Arabia's NCA ECC framework.
+
+Generate 4-6 concise, actionable recommendations for the following compliance report.
+Each recommendation should be practical, specific, and professional.
+Do NOT number the items. Return one recommendation per line, nothing else.
+
+Company: {company_name or "the organization"}
+Overall Score: {overall_score}%
+Total Controls: {total_controls}
+Evaluated: {total_evaluated}
+Compliant: {total_compliant}
+Partially Compliant: {total_partial}
+Non-Compliant: {total_non_compliant}
+Not Yet Evaluated: {not_evaluated}
+
+Domains below target (<80%):
+{weak_domains_text}
+
+Write recommendations in English. Be specific to the numbers above."""
+
+    try:
+        response = client.chat.completions.create(
+            model=model_name,
+            max_tokens=600,
+            temperature=0.4,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        text = response.choices[0].message.content or ""
+        if "<think>" in text:
+            text = text.split("</think>")[-1].strip()
+        lines = [l.strip("- •*").strip() for l in text.strip().splitlines() if l.strip()]
+        return [l for l in lines if len(l) > 10]
+    except Exception as e:
+        print(f"[LLM Recommendations] Error: {e}")
+        recs = []
+        if not_evaluated > 0:
+            recs.append(f"Complete evaluation for the remaining {not_evaluated} controls.")
+        if total_non_compliant > 0:
+            recs.append(f"Address {total_non_compliant} non-compliant controls by uploading required evidence.")
+        if total_partial > 0:
+            recs.append(f"Improve {total_partial} partially compliant controls to achieve full compliance.")
+        return recs
+
+
 def save_file_locally(file_content: bytes, original_filename: str, deliverable_id: str) -> dict:
     """Save uploaded file to local uploads directory"""
     # Create date-based subdirectory
@@ -527,19 +604,26 @@ Score 1 = evidence clearly and fully proves deliverable, Score 0 = not proven or
                     }
                 ]
 
+            prompt_len = sum(len(str(m.get("content", ""))) for m in messages)
+            print(f"    Prompt chars: {prompt_len}")
+
             response = client.chat.completions.create(
                 model=model_name,
-                max_tokens=1000,
+                max_tokens=4000,
                 temperature=0.1,
                 messages=messages
             )
 
-            text = response.choices[0].message.content
-            print(f"    Raw: {text[:200] if text else 'EMPTY'}...")
+            raw_msg = response.choices[0].message
+            text = raw_msg.content or ""
+            # DeepSeek reasoning models put the answer in content but may return empty
+            # if thinking exhausted the token budget — check finish_reason
+            finish = getattr(response.choices[0], "finish_reason", "")
+            print(f"    Raw ({finish}): {text[:200] if text else 'EMPTY'}...")
 
-            # Retry with a shorter prompt if the model returns empty content
+            # Retry 1: shorter prompt without KB context, higher token budget
             if not text:
-                print(f"    [RETRY] Empty response — retrying with simplified prompt...")
+                print(f"    [RETRY-1] Retrying without KB context...")
                 fallback_messages = [
                     {
                         "role": "user",
@@ -554,15 +638,34 @@ Does the evidence prove this deliverable? Reply with JSON only: {{"score": 0 or 
                 ]
                 fallback_response = client.chat.completions.create(
                     model=model_name,
-                    max_tokens=500,
+                    max_tokens=4000,
                     temperature=0.1,
                     messages=fallback_messages
                 )
-                text = fallback_response.choices[0].message.content
-                print(f"    [RETRY] Raw: {text[:200] if text else 'STILL EMPTY'}...")
+                text = fallback_response.choices[0].message.content or ""
+                print(f"    [RETRY-1] Raw: {text[:200] if text else 'STILL EMPTY'}...")
+
+            # Retry 2: minimal prompt, different phrasing to avoid reasoning loops
+            if not text:
+                print(f"    [RETRY-2] Retrying with minimal prompt...")
+                minimal_messages = [
+                    {
+                        "role": "user",
+                        "content": f'Score this compliance check. Deliverable: "{deliverable["name"]}". Evidence snippet: {combined_evidence_text[:300] if combined_evidence_text else "none provided"}. Output ONLY valid JSON: {{"score": 0, "explanation": "your reason here"}}'
+                    }
+                ]
+                minimal_response = client.chat.completions.create(
+                    model=model_name,
+                    max_tokens=4000,
+                    temperature=0.0,
+                    messages=minimal_messages
+                )
+                text = minimal_response.choices[0].message.content or ""
+                print(f"    [RETRY-2] Raw: {text[:200] if text else 'STILL EMPTY'}...")
 
             if not text:
-                raise Exception("Empty response from model")
+                print(f"    [!] All retries failed — scoring as 0")
+                text = '{"score": 0, "explanation": "Model returned empty response after multiple retries"}'
 
             # Remove thinking tags if present
             if "<think>" in text:
@@ -689,19 +792,22 @@ Does the evidence prove this deliverable? Reply with JSON only: {{"score": 0 or 
                                         print(f"[DB] Save control score error: {db_err}")
                                 print(f"  [CTRL] {parent_control_id} score updated: {ctrl_score}")
 
-    # Store evidence for evidence listing
-    file_names = ", ".join(ev["filename"] for ev in all_evidence) or "N/A"
-    for d in deliverable_results:
+    # Store evidence for evidence listing — one entry per uploaded file
+    overall_status = "compliant" if sc_score == 1.0 else ("partial" if sc_score == 0.5 else "non_compliant")
+    summary_explanation = "; ".join(
+        f"{d['name']}: {d['explanation']}" for d in deliverable_results
+    )[:300]
+    for ev in all_evidence:
         evidence_store.append({
             "id": str(uuid.uuid4())[:8],
-            "deliverable_id": d["deliverable_id"],
-            "deliverable_name": d["name"],
+            "deliverable_id": deliverable_results[0]["deliverable_id"] if deliverable_results else "",
+            "deliverable_name": sub_control["name"],
             "sub_control_id": sub_control_id,
             "control_name": control["name"],
-            "file_name": file_names,
+            "file_name": ev["filename"],
             "upload_date": datetime.now().isoformat(),
-            "status": "compliant" if d["score"] == 1 else "non_compliant",
-            "explanation": d["explanation"]
+            "status": overall_status,
+            "explanation": summary_explanation,
         })
 
     return {
@@ -1054,20 +1160,21 @@ async def generate_report():
                 "control_findings": control_findings,
             })
 
-    # Build recommendations
-    recommendations = []
     not_evaluated = total_controls - total_evaluated
-    if not_evaluated > 0:
-        recommendations.append(f"Complete evaluation for the remaining {not_evaluated} controls.")
-    if total_non_compliant > 0:
-        recommendations.append(f"Address {total_non_compliant} non-compliant controls by uploading required evidence.")
-    if total_partial > 0:
-        recommendations.append(f"Improve {total_partial} partially compliant controls to achieve full compliance.")
     validated_count = len([v for v in validation_store.values() if v.get("validated")])
-    if validated_count < total_evaluated and total_evaluated > 0:
-        recommendations.append(f"Complete human validation for {total_evaluated - validated_count} evaluated controls.")
-
     overall_score = round((total_compliant + total_partial * 0.5) / total_controls * 100) if total_controls > 0 else 0
+
+    recommendations = await generate_llm_recommendations(
+        company_name=org_settings_store.get("company_name", ""),
+        total_controls=total_controls,
+        total_evaluated=total_evaluated,
+        total_compliant=total_compliant,
+        total_partial=total_partial,
+        total_non_compliant=total_non_compliant,
+        not_evaluated=not_evaluated,
+        overall_score=overall_score,
+        domain_results=domain_results,
+    )
 
     return {
         "status": "success",
@@ -1174,15 +1281,20 @@ async def generate_scoped_report(req: ScopedReportRequest):
                 })
 
     not_evaluated = total_controls - total_evaluated
-    recommendations = []
-    if not_evaluated > 0:
-        recommendations.append(f"Complete evaluation for the remaining {not_evaluated} controls.")
-    if total_non_compliant > 0:
-        recommendations.append(f"Address {total_non_compliant} non-compliant controls by uploading required evidence.")
-    if total_partial > 0:
-        recommendations.append(f"Improve {total_partial} partially compliant controls to achieve full compliance.")
     validated_count = len([v for v in validation_store.values() if v.get("validated")])
     overall_score = round((total_compliant + total_partial * 0.5) / total_controls * 100) if total_controls > 0 else 0
+
+    recommendations = await generate_llm_recommendations(
+        company_name=req.company_name,
+        total_controls=total_controls,
+        total_evaluated=total_evaluated,
+        total_compliant=total_compliant,
+        total_partial=total_partial,
+        total_non_compliant=total_non_compliant,
+        not_evaluated=not_evaluated,
+        overall_score=overall_score,
+        domain_results=domain_results,
+    )
 
     return {
         "status": "success",

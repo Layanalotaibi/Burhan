@@ -80,3 +80,6 @@ python server.py
 
 cd /Users/layanalotaibi/burhan-server/burhanUI
 ./node_modules/.bin/vite
+
+cd /Users/layanalotaibi/burhan-server/burhanUI
+/usr/local/bin/node ./node_modules/.bin/vite --port 3000
