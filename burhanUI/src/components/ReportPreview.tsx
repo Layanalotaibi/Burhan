@@ -85,14 +85,14 @@ export function ReportPreview({ onBack, initialReport }: ReportPreviewProps) {
     setIsExporting(true);
 
     const pageEls = Array.from(wrapper.querySelectorAll<HTMLElement>("[data-pdf-page]"));
-    // Record each page's offsetTop and offsetHeight relative to wrapper
-    const pageRects = pageEls.map(p => ({
-      top: p.offsetTop,
-      height: p.offsetHeight,
-    }));
-
-    // Remove only visual decoration — keep layout intact
-    pageEls.forEach(p => { p.style.marginBottom = "0"; p.style.boxShadow = "none"; p.style.border = "none"; });
+    // Snapshot actual heights BEFORE changing any styles
+    const actualHeights = pageEls.map(p => p.offsetHeight);
+    pageEls.forEach((p, i) => {
+      p.style.height = actualHeights[i] + "px"; // lock height so html2canvas sees full flex layout
+      p.style.marginBottom = "0";
+      p.style.boxShadow = "none";
+      p.style.border = "none";
+    });
     wrapper.style.paddingTop = "0";
     wrapper.style.paddingBottom = "0";
 
@@ -104,31 +104,23 @@ export function ReportPreview({ onBack, initialReport }: ReportPreviewProps) {
       const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
       const pdfW = pdf.internal.pageSize.getWidth();
       const pdfH = pdf.internal.pageSize.getHeight();
-      const scale = 2;
 
-      // Render entire wrapper once — preserves full flex/layout context
-      const fullCanvas = await html2canvas(wrapper, {
-        scale,
-        useCORS: true,
-        logging: false,
-        width: wrapper.scrollWidth,
-        height: wrapper.scrollHeight,
-        windowWidth: wrapper.scrollWidth,
-      });
-
-      for (let i = 0; i < pageRects.length; i++) {
-        const { top, height } = pageRects[i];
-        const pageCanvas = document.createElement("canvas");
-        pageCanvas.width  = fullCanvas.width;
-        pageCanvas.height = height * scale;
-        const ctx = pageCanvas.getContext("2d")!;
-        ctx.drawImage(fullCanvas, 0, top * scale, fullCanvas.width, height * scale, 0, 0, fullCanvas.width, height * scale);
-
-        const imgData = pageCanvas.toDataURL("image/jpeg", 0.98);
-        const imgH = (pageCanvas.height / pageCanvas.width) * pdfW;
+      for (let i = 0; i < pageEls.length; i++) {
+        const canvas = await html2canvas(pageEls[i], {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          windowWidth: 794,
+          windowHeight: pageEls[i].offsetHeight,
+          scrollX: 0,
+          scrollY: -window.scrollY,
+        });
+        const imgData = canvas.toDataURL("image/jpeg", 0.98);
+        const imgH = (canvas.height / canvas.width) * pdfW;
 
         if (i > 0) pdf.addPage();
 
+        // Slice across pages; use 1mm threshold to ignore floating-point rounding
         let remaining = imgH;
         let yOffset = 0;
         while (remaining > 1) {
@@ -140,7 +132,7 @@ export function ReportPreview({ onBack, initialReport }: ReportPreviewProps) {
 
       pdf.save(`${companyName}-ECC-Report.pdf`);
     } finally {
-      pageEls.forEach(p => { p.style.marginBottom = ""; p.style.boxShadow = ""; p.style.border = ""; });
+      pageEls.forEach(p => { p.style.height = ""; p.style.marginBottom = ""; p.style.boxShadow = ""; p.style.border = ""; });
       wrapper.style.paddingTop = "";
       wrapper.style.paddingBottom = "";
       setIsExporting(false);
