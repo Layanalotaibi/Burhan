@@ -76,45 +76,49 @@ export function ReportPreview({ onBack, initialReport }: ReportPreviewProps) {
     });
   }, [initialReport]);
 
-  const handleExport = () => {
+  const handleExport = async () => {
     const wrapper = document.getElementById("report-content");
     if (!wrapper) return;
     setIsExporting(true);
 
-    const pages = Array.from(wrapper.querySelectorAll<HTMLElement>("[data-pdf-page]"));
-    // Remove only visual decoration — keep minHeight so each div = exactly A4 height
-    pages.forEach(p => {
-      p.style.marginBottom = "0";
-      p.style.boxShadow = "none";
-      p.style.border = "none";
-    });
+    const pageEls = Array.from(wrapper.querySelectorAll<HTMLElement>("[data-pdf-page]"));
+    pageEls.forEach(p => { p.style.marginBottom = "0"; p.style.boxShadow = "none"; p.style.border = "none"; });
     wrapper.style.paddingTop = "0";
     wrapper.style.paddingBottom = "0";
 
-    const html2pdf = (window as any).html2pdf;
-    const companyName = report?.company_name || "Burhan";
+    try {
+      const html2canvas = (window as any).html2canvas;
+      const { jsPDF } = (window as any).jspdf;
+      const companyName = report?.company_name || "Burhan";
 
-    html2pdf()
-      .set({
-        margin: 0,
-        filename: `${companyName}-ECC-Report.pdf`,
-        image: { type: "jpeg", quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: false },
-        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-        pagebreak: { after: "[data-pdf-page]" },
-      })
-      .from(wrapper)
-      .save()
-      .then(() => {
-        pages.forEach(p => {
-          p.style.marginBottom = "";
-          p.style.boxShadow = "";
-          p.style.border = "";
-        });
-        wrapper.style.paddingTop = "";
-        wrapper.style.paddingBottom = "";
-        setIsExporting(false);
-      });
+      const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+      const pdfW = pdf.internal.pageSize.getWidth();
+      const pdfH = pdf.internal.pageSize.getHeight();
+
+      for (let i = 0; i < pageEls.length; i++) {
+        const canvas = await html2canvas(pageEls[i], { scale: 2, useCORS: true, logging: false });
+        const imgData = canvas.toDataURL("image/jpeg", 0.98);
+        const imgH = (canvas.height / canvas.width) * pdfW;
+
+        if (i > 0) pdf.addPage();
+
+        // If this element is taller than one page, slice it across multiple pages
+        let remaining = imgH;
+        let yOffset = 0;
+        while (remaining > 0) {
+          pdf.addImage(imgData, "JPEG", 0, yOffset, pdfW, imgH);
+          remaining -= pdfH;
+          if (remaining > 0) { pdf.addPage(); yOffset -= pdfH; }
+        }
+      }
+
+      pdf.save(`${companyName}-ECC-Report.pdf`);
+    } finally {
+      pageEls.forEach(p => { p.style.marginBottom = ""; p.style.boxShadow = ""; p.style.border = ""; });
+      wrapper.style.paddingTop = "";
+      wrapper.style.paddingBottom = "";
+      setIsExporting(false);
+    }
   };
 
   if (loading) {
