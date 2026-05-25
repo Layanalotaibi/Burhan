@@ -85,7 +85,14 @@ export function ReportPreview({ onBack, initialReport }: ReportPreviewProps) {
     setIsExporting(true);
 
     const pageEls = Array.from(wrapper.querySelectorAll<HTMLElement>("[data-pdf-page]"));
-    pageEls.forEach(p => { p.style.marginBottom = "0"; p.style.boxShadow = "none"; p.style.border = "none"; });
+    // Snapshot actual heights BEFORE changing any styles
+    const actualHeights = pageEls.map(p => p.offsetHeight);
+    pageEls.forEach((p, i) => {
+      p.style.height = actualHeights[i] + "px"; // lock height so html2canvas sees full flex layout
+      p.style.marginBottom = "0";
+      p.style.boxShadow = "none";
+      p.style.border = "none";
+    });
     wrapper.style.paddingTop = "0";
     wrapper.style.paddingBottom = "0";
 
@@ -125,7 +132,7 @@ export function ReportPreview({ onBack, initialReport }: ReportPreviewProps) {
 
       pdf.save(`${companyName}-ECC-Report.pdf`);
     } finally {
-      pageEls.forEach(p => { p.style.marginBottom = ""; p.style.boxShadow = ""; p.style.border = ""; });
+      pageEls.forEach(p => { p.style.height = ""; p.style.marginBottom = ""; p.style.boxShadow = ""; p.style.border = ""; });
       wrapper.style.paddingTop = "";
       wrapper.style.paddingBottom = "";
       setIsExporting(false);
