@@ -178,7 +178,6 @@ async def generate_llm_recommendations(
     """Use the LLM to generate customized compliance recommendations."""
     client = get_llm_client()
     if not client:
-        # Fallback to static recommendations if no LLM configured
         recs = []
         if not_evaluated > 0:
             recs.append(f"Complete evaluation for the remaining {not_evaluated} controls.")
@@ -190,37 +189,45 @@ async def generate_llm_recommendations(
 
     model_name = get_model_name()
 
-    weak_domains = [
-        f"- {d['name']}: {d['progress']}% compliant ({d['compliant']}/{d['total_controls']} controls)"
-        for d in domain_results
-        if d["progress"] < 80
-    ]
-    weak_domains_text = "\n".join(weak_domains) if weak_domains else "None"
+    # Collect specific gaps with evaluation reasons
+    gap_lines = []
+    for d in domain_results:
+        for cf in d.get("control_findings", []):
+            if cf["status"] in ("Non-Compliant", "Partial"):
+                failing = [
+                    dv for dv in cf.get("deliverables", [])
+                    if dv.get("score", 1) == 0 and dv.get("explanation", "")
+                ]
+                if failing:
+                    reasons = "; ".join(dv["explanation"][:120] for dv in failing[:2])
+                    gap_lines.append(f"- [{cf['control_id']}] {cf['name']} — Gap: {reasons}")
+                else:
+                    gap_lines.append(f"- [{cf['control_id']}] {cf['name']} — Status: {cf['status']}")
 
-    prompt = f"""You are a cybersecurity compliance advisor specializing in Saudi Arabia's NCA ECC framework.
+    gaps_text = "\n".join(gap_lines[:12]) or "No specific gaps identified"
 
-Generate 4-6 concise, actionable recommendations for the following compliance report.
-Each recommendation should be practical, specific, and professional.
-Do NOT number the items. Return one recommendation per line, nothing else.
+    prompt = f"""You are an NCA ECC compliance auditor writing a formal report for {company_name or "the organization"}.
 
-Company: {company_name or "the organization"}
-Overall Score: {overall_score}%
-Total Controls: {total_controls}
-Evaluated: {total_evaluated}
-Compliant: {total_compliant}
-Partially Compliant: {total_partial}
-Non-Compliant: {total_non_compliant}
-Not Yet Evaluated: {not_evaluated}
+The organization scored {overall_score}% overall. Based ONLY on the specific gaps listed below, write exactly 4 recommendations.
 
-Domains below target (<80%):
-{weak_domains_text}
+STRICT RULES — violating any rule means the output is rejected:
+- Each recommendation must directly address one of the listed gaps
+- Use the exact control names from the list
+- NEVER mention any number of days, weeks, months, or any deadline (e.g. do not write "30 days", "90-day", "within X", "quarterly", "monthly")
+- NEVER write generic cybersecurity advice not tied to the gaps
+- One sentence per recommendation
+- Output only the recommendation sentences, one per line, no numbering, no dashes, no bullets
 
-Write recommendations in English. Be specific to the numbers above."""
+BAD example (rejected — contains deadline): "Assign owners and remediate within 30 days."
+GOOD example (accepted): "Assign formal owners to each non-compliant control and document the required evidence artifacts in the ECC control catalog."
+
+Identified Gaps:
+{gaps_text}"""
 
     try:
         response = client.chat.completions.create(
             model=model_name,
-            max_tokens=600,
+            max_tokens=4000,
             temperature=0.4,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -228,17 +235,21 @@ Write recommendations in English. Be specific to the numbers above."""
         if "<think>" in text:
             text = text.split("</think>")[-1].strip()
         lines = [l.strip("- •*").strip() for l in text.strip().splitlines() if l.strip()]
-        return [l for l in lines if len(l) > 10]
+        result = [l for l in lines if len(l) > 10]
+        if result:
+            return result
     except Exception as e:
         print(f"[LLM Recommendations] Error: {e}")
-        recs = []
-        if not_evaluated > 0:
-            recs.append(f"Complete evaluation for the remaining {not_evaluated} controls.")
-        if total_non_compliant > 0:
-            recs.append(f"Address {total_non_compliant} non-compliant controls by uploading required evidence.")
-        if total_partial > 0:
-            recs.append(f"Improve {total_partial} partially compliant controls to achieve full compliance.")
-        return recs
+
+    # Fallback static recommendations
+    recs = []
+    if not_evaluated > 0:
+        recs.append(f"Complete evaluation for the remaining {not_evaluated} controls.")
+    if total_non_compliant > 0:
+        recs.append(f"Address {total_non_compliant} non-compliant controls by uploading required evidence.")
+    if total_partial > 0:
+        recs.append(f"Improve {total_partial} partially compliant controls to achieve full compliance.")
+    return recs
 
 
 def save_file_locally(file_content: bytes, original_filename: str, deliverable_id: str) -> dict:
@@ -1132,12 +1143,13 @@ async def generate_report():
                                 total_partial += 1
                                 status = "Partial"
 
-                            # Get evidence files for this control
                             control_evidence = [e for e in evidence_store if e.get("sub_control_id") == item_id]
 
                             control_findings.append({
                                 "control_id": item_id,
                                 "name": item.get("name", ""),
+                                "sub_domain_id": sd.get("sub_domain_id", ""),
+                                "sub_domain_name": sd.get("name", ""),
                                 "score": score,
                                 "status": status,
                                 "evidence_files": [e.get("file_name", "") for e in control_evidence],
@@ -1145,6 +1157,20 @@ async def generate_report():
                                 "evaluated_at": eval_result.get("evaluated_at", ""),
                                 "validated": val_result is not None and val_result.get("validated", False),
                                 "validator": val_result.get("validator_name", "") if val_result else "",
+                            })
+                        else:
+                            control_findings.append({
+                                "control_id": item_id,
+                                "name": item.get("name", ""),
+                                "sub_domain_id": sd.get("sub_domain_id", ""),
+                                "sub_domain_name": sd.get("name", ""),
+                                "score": None,
+                                "status": "Not Evaluated",
+                                "evidence_files": [],
+                                "deliverables": [],
+                                "evaluated_at": "",
+                                "validated": False,
+                                "validator": "",
                             })
 
             domain_progress = round((domain_compliant / domain_controls * 100)) if domain_controls > 0 else 0
@@ -1265,6 +1291,20 @@ async def generate_scoped_report(req: ScopedReportRequest):
                                 "evaluated_at": eval_result.get("evaluated_at", ""),
                                 "validated": val_result is not None and val_result.get("validated", False),
                                 "validator": val_result.get("validator_name", "") if val_result else "",
+                            })
+                        else:
+                            control_findings.append({
+                                "control_id": item_id,
+                                "name": item.get("name", ""),
+                                "sub_domain_id": sd.get("sub_domain_id", ""),
+                                "sub_domain_name": sd.get("name", ""),
+                                "score": None,
+                                "status": "Not Evaluated",
+                                "evidence_files": [],
+                                "deliverables": [],
+                                "evaluated_at": "",
+                                "validated": False,
+                                "validator": "",
                             })
 
             if domain_controls > 0:

@@ -63,9 +63,37 @@ export function ReportPreview({ onBack, initialReport }: ReportPreviewProps) {
   }, [initialReport]);
 
   const handleExport = () => {
-    setShowExportModal(true);
+    const wrapper = document.getElementById("report-content");
+    if (!wrapper) return;
     setIsExporting(true);
-    setTimeout(() => setIsExporting(false), 2000);
+
+    // Remove spacing temporarily so pages align exactly to 794×1123
+    const pages = Array.from(wrapper.querySelectorAll<HTMLElement>("[data-pdf-page]"));
+    pages.forEach(p => { p.style.marginBottom = "0"; p.style.boxShadow = "none"; p.style.border = "none"; });
+    wrapper.style.padding = "0";
+    wrapper.style.gap = "0";
+
+    const html2pdf = (window as any).html2pdf;
+    const companyName = report?.company_name || "Burhan";
+
+    html2pdf()
+      .set({
+        margin: 0,
+        filename: `${companyName}-ECC-Report.pdf`,
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, logging: false, width: 794 },
+        jsPDF: { unit: "px", format: [794, 1123], orientation: "portrait", hotfixes: ["px_scaling"] },
+        pagebreak: { mode: "css", after: "[data-pdf-page]" },
+      })
+      .from(wrapper)
+      .save()
+      .then(() => {
+        // Restore spacing
+        pages.forEach(p => { p.style.marginBottom = ""; p.style.boxShadow = ""; p.style.border = ""; });
+        wrapper.style.padding = "";
+        wrapper.style.gap = "";
+        setIsExporting(false);
+      });
   };
 
   if (loading) {
@@ -88,7 +116,7 @@ export function ReportPreview({ onBack, initialReport }: ReportPreviewProps) {
     <div className="min-h-screen" style={{ backgroundColor: C.bgPage }}>
 
       {/* ── Action Bar ── */}
-      <div className="sticky top-0 z-10 bg-white border-b shadow-sm px-6 py-3">
+      <div className="no-print sticky top-0 z-10 bg-white border-b shadow-sm px-6 py-3">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <Button variant="outline" onClick={onBack} className="gap-2 text-sm">
             <ArrowLeft className="w-4 h-4" /> Back
@@ -101,18 +129,19 @@ export function ReportPreview({ onBack, initialReport }: ReportPreviewProps) {
                 <SelectItem value="docx">DOCX</SelectItem>
               </SelectContent>
             </Select>
-            <Button onClick={handleExport} className="gap-2 text-sm text-white" style={{ backgroundColor: C.navy }}>
-              <Download className="w-4 h-4" /> Download
+            <Button onClick={handleExport} disabled={isExporting} className="gap-2 text-sm text-white" style={{ backgroundColor: C.navy }}>
+              {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              {isExporting ? "Generating…" : "Download"}
             </Button>
           </div>
         </div>
       </div>
 
       {/* ── Pages ── */}
-      <div className="py-10 flex flex-col items-center">
+      <div id="report-content" className="py-10 flex flex-col items-center">
 
         {/* ══ PAGE 1: COVER ══ */}
-        <div style={PAGE}>
+        <div data-pdf-page style={PAGE}>
 
           {/* ── Top band ── */}
           <div className="px-12 py-8 flex items-center justify-between border-b" style={{ borderColor: C.border }}>
@@ -235,7 +264,7 @@ export function ReportPreview({ onBack, initialReport }: ReportPreviewProps) {
         </div>
 
         {/* ══ PAGE 2: EXECUTIVE SUMMARY + DOMAIN OVERVIEW ══ */}
-        <div style={PAGE}>
+        <div data-pdf-page style={PAGE}>
           <div className="flex-1 px-12 py-10 space-y-10">
 
             {/* 1. Executive Summary */}
@@ -340,7 +369,7 @@ export function ReportPreview({ onBack, initialReport }: ReportPreviewProps) {
         </div>
 
         {/* ══ PAGE 3: CONTROL-LEVEL FINDINGS ══ */}
-        <div style={PAGE}>
+        <div data-pdf-page style={PAGE}>
           <div className="flex-1 px-12 py-10">
             <section>
               <SectionHeading number="3" title="Control-Level Findings" />
@@ -348,52 +377,98 @@ export function ReportPreview({ onBack, initialReport }: ReportPreviewProps) {
                 <table className="w-full text-sm">
                   <thead>
                     <tr style={{ backgroundColor: C.navy }}>
-                      {["Control ID", "Name", "Compliance Level", "Validated"].map((h) => (
-                        <th key={h} className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-white">{h}</th>
-                      ))}
+                      <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-white w-28">Control ID</th>
+                      <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-white">Name</th>
+                      <th className="text-center px-4 py-3 font-semibold text-xs uppercase tracking-wider text-white w-36">Compliance Level</th>
+                      <th className="text-center px-4 py-3 font-semibold text-xs uppercase tracking-wider text-white w-28">Validated</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(() => {
                       const rows: any[] = [];
+
+                      // Sort by control_id numerically
+                      const sortById = (arr: any[]) => [...arr].sort((a, b) => {
+                        const pa = a.control_id.split("-").map(Number);
+                        const pb = b.control_id.split("-").map(Number);
+                        for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+                          const diff = (pa[i] || 0) - (pb[i] || 0);
+                          if (diff !== 0) return diff;
+                        }
+                        return 0;
+                      });
+
+                      // Derive sub-domain key from control_id (e.g. "2-1-1" → "2-1")
+                      const sdKeyOf = (id: string) => id.split("-").slice(0, 2).join("-");
+
                       (r.domain_results || []).forEach((d: any) => {
-                        const findings = d.control_findings || [];
+                        const findings = sortById(d.control_findings || []);
                         if (!findings.length) return;
+
+                        // Domain header
                         rows.push(
-                          <tr key={`dh-${d.name}`} style={{ backgroundColor: C.teal }}>
-                            <td colSpan={4} className="px-4 py-2 text-white font-semibold text-xs tracking-wide">{d.name}</td>
+                          <tr key={`dh-${d.domain_id}`} style={{ backgroundColor: C.navy }}>
+                            <td colSpan={4} className="px-4 py-2 text-white font-bold text-xs tracking-wide uppercase">{d.name}</td>
                           </tr>
                         );
-                        findings.forEach((f: any, i: number) => {
+
+                        // Always group by derived key from control_id for consistency
+                        const bySubDomain: Record<string, { name: string; items: any[] }> = {};
+                        findings.forEach((f: any) => {
+                          const sdKey = sdKeyOf(f.control_id);
+                          if (!bySubDomain[sdKey]) bySubDomain[sdKey] = { name: sdKey, items: [] };
+                          // Use sub_domain_name when available
+                          if (f.sub_domain_name) bySubDomain[sdKey].name = f.sub_domain_name;
+                          bySubDomain[sdKey].items.push(f);
+                        });
+
+                        // Sort sub-domain groups by their key numerically
+                        const sortedSds = Object.entries(bySubDomain).sort(([a], [b]) => {
+                          const pa = a.split("-").map(Number);
+                          const pb = b.split("-").map(Number);
+                          for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+                            const diff = (pa[i] || 0) - (pb[i] || 0);
+                            if (diff !== 0) return diff;
+                          }
+                          return 0;
+                        });
+
+                        sortedSds.forEach(([sdKey, sd]) => {
                           rows.push(
-                            <tr key={`${f.control_id}-${i}`} style={{ backgroundColor: i % 2 === 0 ? "#FFFFFF" : C.bgAlt, borderBottom: `1px solid ${C.border}` }}>
-                              <td className="px-4 py-3 font-mono font-bold text-xs" style={{ color: C.teal }}>{f.control_id}</td>
-                              <td className="px-4 py-3" style={{ color: C.textDark }}>{f.name}</td>
-                              <td className="px-4 py-3">
-                                <div className="flex justify-center">
-                                  <div className="w-4 h-4 rounded-full" style={{ backgroundColor: DOT[f.status] || C.gray }} title={f.status || "Not Evaluated"} />
-                                </div>
-                              </td>
-                              <td className="px-4 py-3">
-                                <div className="flex justify-center">
-                                  <div className="w-4 h-4 rounded-full"
-                                       style={{ backgroundColor: f.validated ? C.green : C.gray }}
-                                       title={f.validated ? "Validated" : "Not validated"} />
-                                </div>
+                            <tr key={`sdh-${sdKey}`} style={{ backgroundColor: C.tealLight }}>
+                              <td colSpan={4} className="px-6 py-2 font-semibold text-xs" style={{ color: C.navy }}>
+                                {sdKey} — {sd.name}
                               </td>
                             </tr>
                           );
+                          sd.items.forEach((f: any, i: number) => {
+                            rows.push(
+                              <tr key={`${f.control_id}-${i}`} style={{ backgroundColor: i % 2 === 0 ? "#FFFFFF" : C.bgAlt, borderBottom: `1px solid ${C.border}` }}>
+                                <td className="px-4 py-2.5 font-mono font-bold text-xs whitespace-nowrap" style={{ color: C.teal }}>{f.control_id}</td>
+                                <td className="px-4 py-2.5 text-xs" style={{ color: C.textDark }}>{f.name}</td>
+                                <td className="px-4 py-2.5">
+                                  <div className="flex justify-center">
+                                    <div className="w-3.5 h-3.5 rounded-full" style={{ backgroundColor: DOT[f.status] || C.gray }} title={f.status} />
+                                  </div>
+                                </td>
+                                <td className="px-4 py-2.5">
+                                  <div className="flex justify-center">
+                                    <div className="w-3.5 h-3.5 rounded-full" style={{ backgroundColor: f.validated ? C.green : C.gray }} title={f.validated ? "Validated" : "Not validated"} />
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          });
                         });
                       });
-                      if (!rows.length) {
-                        return (
-                          <tr>
-                            <td colSpan={4} className="px-4 py-8 text-center text-sm" style={{ color: C.textLight }}>
-                              No evaluations completed yet
-                            </td>
-                          </tr>
-                        );
-                      }
+
+                      if (!rows.length) return (
+                        <tr>
+                          <td colSpan={4} className="px-4 py-8 text-center text-sm" style={{ color: C.textLight }}>
+                            No evaluations completed yet
+                          </td>
+                        </tr>
+                      );
                       return rows;
                     })()}
                   </tbody>
@@ -405,7 +480,7 @@ export function ReportPreview({ onBack, initialReport }: ReportPreviewProps) {
         </div>
 
         {/* ══ PAGE 4: RECOMMENDATIONS + CONCLUSION + VERIFICATION ══ */}
-        <div style={PAGE}>
+        <div data-pdf-page style={PAGE}>
           <div className="flex-1 px-12 py-10 flex flex-col">
 
             {/* 4. Recommendations */}
