@@ -68,9 +68,8 @@ export function ReportPreview({ onBack, initialReport }: ReportPreviewProps) {
     setIsExporting(true);
 
     const pages = Array.from(wrapper.querySelectorAll<HTMLElement>("[data-pdf-page]"));
-    // Remove fixed height + spacing so content flows naturally (no empty pages)
+    // Remove only visual decoration — keep minHeight so each div = exactly A4 height
     pages.forEach(p => {
-      p.style.minHeight = "0";
       p.style.marginBottom = "0";
       p.style.boxShadow = "none";
       p.style.border = "none";
@@ -83,18 +82,17 @@ export function ReportPreview({ onBack, initialReport }: ReportPreviewProps) {
 
     html2pdf()
       .set({
-        margin: [8, 0, 8, 0],
+        margin: 0,
         filename: `${companyName}-ECC-Report.pdf`,
         image: { type: "jpeg", quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true, logging: false },
         jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-        pagebreak: { mode: "avoid-all" },
+        pagebreak: { after: "[data-pdf-page]" },
       })
       .from(wrapper)
       .save()
       .then(() => {
         pages.forEach(p => {
-          p.style.minHeight = "";
           p.style.marginBottom = "";
           p.style.boxShadow = "";
           p.style.border = "";
