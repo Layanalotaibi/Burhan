@@ -67,31 +67,40 @@ export function ReportPreview({ onBack, initialReport }: ReportPreviewProps) {
     if (!wrapper) return;
     setIsExporting(true);
 
-    // Remove spacing temporarily so pages align exactly to 794×1123
     const pages = Array.from(wrapper.querySelectorAll<HTMLElement>("[data-pdf-page]"));
-    pages.forEach(p => { p.style.marginBottom = "0"; p.style.boxShadow = "none"; p.style.border = "none"; });
-    wrapper.style.padding = "0";
-    wrapper.style.gap = "0";
+    // Remove fixed height + spacing so content flows naturally (no empty pages)
+    pages.forEach(p => {
+      p.style.minHeight = "0";
+      p.style.marginBottom = "0";
+      p.style.boxShadow = "none";
+      p.style.border = "none";
+    });
+    wrapper.style.paddingTop = "0";
+    wrapper.style.paddingBottom = "0";
 
     const html2pdf = (window as any).html2pdf;
     const companyName = report?.company_name || "Burhan";
 
     html2pdf()
       .set({
-        margin: 0,
+        margin: [8, 0, 8, 0],
         filename: `${companyName}-ECC-Report.pdf`,
         image: { type: "jpeg", quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: false, width: 794 },
-        jsPDF: { unit: "px", format: [794, 1123], orientation: "portrait", hotfixes: ["px_scaling"] },
-        pagebreak: { mode: "css", after: "[data-pdf-page]" },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        pagebreak: { mode: "avoid-all", before: "[data-pdf-page]" },
       })
       .from(wrapper)
       .save()
       .then(() => {
-        // Restore spacing
-        pages.forEach(p => { p.style.marginBottom = ""; p.style.boxShadow = ""; p.style.border = ""; });
-        wrapper.style.padding = "";
-        wrapper.style.gap = "";
+        pages.forEach(p => {
+          p.style.minHeight = "";
+          p.style.marginBottom = "";
+          p.style.boxShadow = "";
+          p.style.border = "";
+        });
+        wrapper.style.paddingTop = "";
+        wrapper.style.paddingBottom = "";
         setIsExporting(false);
       });
   };
