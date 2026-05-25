@@ -102,13 +102,13 @@ export function ReportPreview({ onBack, initialReport }: ReportPreviewProps) {
 
         if (i > 0) pdf.addPage();
 
-        // If this element is taller than one page, slice it across multiple pages
+        // Slice across pages; use 1mm threshold to ignore floating-point rounding
         let remaining = imgH;
         let yOffset = 0;
-        while (remaining > 0) {
+        while (remaining > 1) {
           pdf.addImage(imgData, "JPEG", 0, yOffset, pdfW, imgH);
           remaining -= pdfH;
-          if (remaining > 0) { pdf.addPage(); yOffset -= pdfH; }
+          if (remaining > 1) { pdf.addPage(); yOffset -= pdfH; }
         }
       }
 
