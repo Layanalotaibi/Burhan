@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
-import { Download, FileDown, Loader2, ArrowLeft } from "lucide-react";
+import { Download, FileDown, Loader2, ArrowLeft, RefreshCw } from "lucide-react";
 import { BurhanNewLogo } from "./BurhanNewLogo";
 
 interface ReportPreviewProps {
@@ -54,10 +54,24 @@ export function ReportPreview({ onBack, initialReport }: ReportPreviewProps) {
   const [loading, setLoading]                 = useState(!initialReport);
 
   useEffect(() => {
-    if (initialReport) return;
+    if (initialReport) {
+      localStorage.setItem("burhan_last_report", JSON.stringify(initialReport));
+      return;
+    }
+    // Use cached report if available — avoids burning LLM credits
+    const cached = localStorage.getItem("burhan_last_report");
+    if (cached) {
+      try { setReport(JSON.parse(cached)); setLoading(false); return; } catch {}
+    }
     import("../services/api").then(({ generateReport }) => {
       generateReport()
-        .then((res) => { if (res.status === "success") setReport(res.report); setLoading(false); })
+        .then((res) => {
+          if (res.status === "success") {
+            setReport(res.report);
+            localStorage.setItem("burhan_last_report", JSON.stringify(res.report));
+          }
+          setLoading(false);
+        })
         .catch(() => setLoading(false));
     });
   }, [initialReport]);
@@ -129,6 +143,16 @@ export function ReportPreview({ onBack, initialReport }: ReportPreviewProps) {
             <ArrowLeft className="w-4 h-4" /> Back
           </Button>
           <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              className="gap-2 text-sm"
+              onClick={() => {
+                localStorage.removeItem("burhan_last_report");
+                window.location.reload();
+              }}
+            >
+              <RefreshCw className="w-4 h-4" /> Regenerate
+            </Button>
             <Select value={exportFormat} onValueChange={setExportFormat}>
               <SelectTrigger className="w-[120px] text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
