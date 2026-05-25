@@ -99,7 +99,15 @@ export function ReportPreview({ onBack, initialReport }: ReportPreviewProps) {
       const pdfH = pdf.internal.pageSize.getHeight();
 
       for (let i = 0; i < pageEls.length; i++) {
-        const canvas = await html2canvas(pageEls[i], { scale: 2, useCORS: true, logging: false });
+        const canvas = await html2canvas(pageEls[i], {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          windowWidth: 794,
+          windowHeight: pageEls[i].offsetHeight,
+          scrollX: 0,
+          scrollY: -window.scrollY,
+        });
         const imgData = canvas.toDataURL("image/jpeg", 0.98);
         const imgH = (canvas.height / canvas.width) * pdfW;
 
