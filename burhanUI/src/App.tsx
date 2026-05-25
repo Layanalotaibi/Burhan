@@ -12,6 +12,18 @@ import { Toaster } from "./components/ui/sonner";
 
 type TabId = "dashboard" | "compliance" | "profile" | "help";
 
+const REPORTS_KEY = "burhan_saved_reports";
+
+function loadSavedReports(): any[] {
+  try { return JSON.parse(localStorage.getItem(REPORTS_KEY) || "[]"); } catch { return []; }
+}
+
+function saveReport(report: any) {
+  const list = loadSavedReports().filter((r: any) => r.id !== report.id);
+  list.unshift({ ...report, id: report.generated_at || Date.now() });
+  localStorage.setItem(REPORTS_KEY, JSON.stringify(list.slice(0, 8)));
+}
+
 export default function App() {
   const [showSignup, setShowSignup] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -23,6 +35,7 @@ export default function App() {
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
   const [selectedControlId, setSelectedControlId] = useState<string | null>(null);
+  const [savedReports, setSavedReports] = useState<any[]>(loadSavedReports);
 
   const handleLogin = (user: { name: string; email: string; role: string }) => {
     setUserName(user.name);
@@ -76,6 +89,8 @@ export default function App() {
           const res = await generateScopedReport(subDomainIds, companyName);
           setIsGeneratingReport(false);
           if (res.status === "success") {
+            saveReport(res.report);
+            setSavedReports(loadSavedReports());
             setScopedReport(res.report);
             setShowReportBuilder(false);
             setShowReportPreview(true);
@@ -88,7 +103,14 @@ export default function App() {
   const renderContent = () => {
     switch (activeTab) {
       case "dashboard":
-        return <Dashboard onGenerateReport={() => setShowReportPreview(true)} onBuildReport={() => setShowReportBuilder(true)} userName={userName} onNavigateToControl={handleNavigateToControl} />;
+        return <Dashboard
+          onGenerateReport={() => setShowReportPreview(true)}
+          onBuildReport={() => setShowReportBuilder(true)}
+          userName={userName}
+          onNavigateToControl={handleNavigateToControl}
+          savedReports={savedReports}
+          onOpenSavedReport={(r: any) => { setScopedReport(r); setShowReportPreview(true); }}
+        />;
       case "compliance":
         return <ControlComplianceNew selectedControlId={selectedControlId} onClearSelection={() => setSelectedControlId(null)} userName={userName} />;
       case "profile":
@@ -96,7 +118,14 @@ export default function App() {
       case "help":
         return <HelpSupport />;
       default:
-        return <Dashboard onGenerateReport={() => setShowReportPreview(true)} onBuildReport={() => setShowReportBuilder(true)} userName={userName} onNavigateToControl={handleNavigateToControl} />;
+        return <Dashboard
+          onGenerateReport={() => setShowReportPreview(true)}
+          onBuildReport={() => setShowReportBuilder(true)}
+          userName={userName}
+          onNavigateToControl={handleNavigateToControl}
+          savedReports={savedReports}
+          onOpenSavedReport={(r: any) => { setScopedReport(r); setShowReportPreview(true); }}
+        />;
     }
   };
 

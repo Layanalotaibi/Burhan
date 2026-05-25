@@ -2,7 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/
 import { Progress } from "./ui/progress";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import { CheckCircle2, Clock, FileText, ShieldCheck, AlertTriangle, CalendarClock } from "lucide-react";
+import { CheckCircle2, Clock, FileText, ShieldCheck, AlertTriangle, CalendarClock, FolderOpen } from "lucide-react";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { useState, useEffect } from "react";
 import {
@@ -20,9 +20,11 @@ interface DashboardProps {
   onBuildReport?: () => void;
   userName?: string;
   onNavigateToControl?: (controlId: string) => void;
+  savedReports?: any[];
+  onOpenSavedReport?: (report: any) => void;
 }
 
-export function Dashboard({ onGenerateReport, onBuildReport, userName = "", onNavigateToControl }: DashboardProps) {
+export function Dashboard({ onGenerateReport, onBuildReport, userName = "", onNavigateToControl, savedReports = [], onOpenSavedReport }: DashboardProps) {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -512,6 +514,43 @@ export function Dashboard({ onGenerateReport, onBuildReport, userName = "", onNa
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Last Reports ── */}
+      {savedReports.length > 0 && (
+        <div className="mt-4">
+          <Card className="shadow-sm">
+            <CardHeader className="pb-2 pt-3 px-4">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <FolderOpen className="w-4 h-4 text-[#1BB7B0]" />
+                Last Reports
+              </CardTitle>
+              <CardDescription className="text-xs">Click any report to reopen without regenerating</CardDescription>
+            </CardHeader>
+            <CardContent className="px-4 pb-3">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                {savedReports.map((r: any, i: number) => {
+                  const score = r.overall_score ?? 0;
+                  const color = score >= 70 ? "#2EA87E" : score >= 40 ? "#F59E0B" : "#EF4444";
+                  const date = r.generated_at
+                    ? new Date(r.generated_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+                    : "—";
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => onOpenSavedReport?.(r)}
+                      className="text-left p-3 rounded-lg border border-gray-200 hover:border-[#1BB7B0] hover:bg-[#E6F7F7] transition-colors"
+                    >
+                      <p className="text-xs font-bold truncate text-[#1B2F6B]">{r.company_name || "Full Report"}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{date}</p>
+                      <p className="text-sm font-bold mt-1" style={{ color }}>{score}%</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

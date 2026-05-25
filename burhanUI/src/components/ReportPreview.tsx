@@ -54,10 +54,16 @@ export function ReportPreview({ onBack, initialReport }: ReportPreviewProps) {
   const [loading, setLoading]                 = useState(!initialReport);
 
   useEffect(() => {
-    if (initialReport) {
-      localStorage.setItem("burhan_last_report", JSON.stringify(initialReport));
-      return;
-    }
+    const persist = (r: any) => {
+      localStorage.setItem("burhan_last_report", JSON.stringify(r));
+      try {
+        const key = "burhan_saved_reports";
+        const list = JSON.parse(localStorage.getItem(key) || "[]").filter((x: any) => x.id !== r.generated_at);
+        list.unshift({ ...r, id: r.generated_at || Date.now() });
+        localStorage.setItem(key, JSON.stringify(list.slice(0, 8)));
+      } catch {}
+    };
+    if (initialReport) { persist(initialReport); return; }
     // Use cached report if available — avoids burning LLM credits
     const cached = localStorage.getItem("burhan_last_report");
     if (cached) {
@@ -66,10 +72,7 @@ export function ReportPreview({ onBack, initialReport }: ReportPreviewProps) {
     import("../services/api").then(({ generateReport }) => {
       generateReport()
         .then((res) => {
-          if (res.status === "success") {
-            setReport(res.report);
-            localStorage.setItem("burhan_last_report", JSON.stringify(res.report));
-          }
+          if (res.status === "success") { setReport(res.report); persist(res.report); }
           setLoading(false);
         })
         .catch(() => setLoading(false));
