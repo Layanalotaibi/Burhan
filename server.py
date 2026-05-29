@@ -8,7 +8,8 @@ from dotenv import load_dotenv as _load_dotenv
 _load_dotenv(_pathlib.Path(__file__).parent / ".env")
 
 from fastapi import FastAPI, Form, UploadFile, File, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
@@ -59,6 +60,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve built frontend if dist folder exists
+FRONTEND_DIST = os.path.join(os.path.dirname(__file__), "burhanUI", "build")
+if os.path.exists(FRONTEND_DIST):
+    app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST, "assets")), name="assets")
 
 # =============================================================================
 # In-Memory Stores (for POC — no external DB needed)
@@ -1439,6 +1445,42 @@ async def reset_all_data():
     db.reset_all_data()
     return {"status": "success", "message": "All data has been reset"}
 
+
+# =============================================================================
+# DOCX Report Download
+# =============================================================================
+
+class DocxReportRequest(BaseModel):
+    report: dict
+
+@app.post("/api/report/download-docx")
+async def download_docx_report(req: DocxReportRequest):
+    """Generate and return a Word (.docx) file from the provided report data"""
+    from report_docx import generate_docx
+    import io
+
+    docx_bytes = generate_docx(req.report)
+    company = req.report.get("company_name", "Burhan").replace(" ", "-")
+    filename = f"{company}-ECC-Report.docx"
+
+    return StreamingResponse(
+        io.BytesIO(docx_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# =============================================================================
+# Frontend Catch-All (must be last)
+# =============================================================================
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_frontend(full_path: str):
+    if os.path.exists(FRONTEND_DIST):
+        index = os.path.join(FRONTEND_DIST, "index.html")
+        if os.path.exists(index):
+            return FileResponse(index)
+    return {"error": "Frontend not built. Run: cd burhanUI && npm run build"}
 
 # =============================================================================
 # Main Entry Point
